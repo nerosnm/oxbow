@@ -1,4 +1,4 @@
-//! crate-name
+//! oxbow
 
 #[cfg(test)]
 mod tests {

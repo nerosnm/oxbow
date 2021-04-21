@@ -1,4 +1,4 @@
-# crate-name
+# oxbow
 
 [![CI]][workflow]
 
@@ -7,7 +7,7 @@
 Add the following to the `[dependencies]` section of your `Cargo.toml` file:
 
 ```toml
-crate-name = "0.1.0"
+oxbow = "0.1.0"
 ```
 
 ## License
@@ -26,5 +26,5 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any 
 additional terms or conditions.
 
-[CI]: fake-linkhttps://github.com/username/crate-name/actions/workflows/ci.yml/badge.svg?branch=main
-[workflow]: fake-linkhttps://github.com/username/crate-name/actions/workflows/ci.yml
+[CI]: https://github.com/nerosnm/oxbow/actions/workflows/ci.yml/badge.svg?branch=main
+[workflow]: https://github.com/nerosnm/oxbow/actions/workflows/ci.yml
