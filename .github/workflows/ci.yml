@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  cancel-previous:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Cancel Previous Runs
+      uses: styfle/cancel-workflow-action@0.8.0
+      with:
+        access_token: ${{ secrets.GITHUB_TOKEN }}
+
+  format:
+    runs-on: ubuntu-latest
+    needs: cancel-previous
+
+    steps:
+    - name: Clone
+      uses: actions/checkout@v2
+    - name: Install Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        profile: minimal
+        components: rustfmt
+
+  lint:
+    runs-on: ubuntu-latest
+    needs: cancel-previous
+
+    steps:
+    - name: Clone
+      uses: actions/checkout@v2
+    - name: Install Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        components: clippy, rustfmt
+    - name: Cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: lint-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+    - name: Clippy
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
+    - name: Rustfmt
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: -- --check
+
+  test:
+    runs-on: ubuntu-latest
+    needs: cancel-previous
+
+    steps:
+    - name: Clone
+      uses: actions/checkout@v2
+    - name: Install Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+    - name: Cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: test-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+    - name: Test
+      uses: actions-rs/cargo@v1
+      with:
+        command: test

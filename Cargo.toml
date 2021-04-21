@@ -1,0 +1,9 @@
+[package]
+name = "crate-name"
+version = "0.1.0"
+authors = ["full-name <email>"]
+edition = "2018"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[dependencies]
