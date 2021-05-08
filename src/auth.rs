@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection};
 use thiserror::Error;
 use twitch_api2::twitch_oauth2::{scopes::Scope, TwitchToken};
@@ -59,19 +61,19 @@ pub enum AuthError {
 /// Storage of a [`UserAccessToken`] in an SQLite3 database.
 #[derive(Debug)]
 pub struct SQLiteTokenStore {
-    conn: Connection,
+    conn_pool: Pool<SqliteConnectionManager>,
 }
 
 impl SQLiteTokenStore {
     /// Create an `SQLiteStorage` with a connection to a database.
-    pub fn new(conn: Connection) -> Self {
-        Self { conn }
+    pub fn new(conn_pool: Pool<SqliteConnectionManager>) -> Self {
+        Self { conn_pool }
     }
 
     /// Store `token` in the `token` table, replacing any other values.
     pub fn store_token(&mut self, token: &UserAccessToken) -> Result<(), StoreError> {
         // Make sure there are no other rows in the token table.
-        self.conn.execute(
+        self.conn_pool.get()?.execute(
             r#"
             DELETE FROM token;
             "#,
@@ -79,7 +81,7 @@ impl SQLiteTokenStore {
         )?;
 
         // Insert the token into the token table.
-        self.conn.execute(
+        self.conn_pool.get()?.execute(
             r#"
             INSERT INTO token (
                 access_token,
@@ -107,7 +109,9 @@ impl TokenStorage for SQLiteTokenStore {
     type UpdateError = StoreError;
 
     async fn load_token(&mut self) -> Result<UserAccessToken, Self::LoadError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn_pool.get()?;
+
+        let mut stmt = conn.prepare(
             r#"
             SELECT
                 access_token,
@@ -146,7 +150,7 @@ impl TokenStorage for SQLiteTokenStore {
     }
 
     async fn update_token(&mut self, token: &UserAccessToken) -> Result<(), Self::UpdateError> {
-        self.conn.execute(
+        self.conn_pool.get()?.execute(
             r#"
             UPDATE token
             SET
@@ -179,6 +183,9 @@ pub enum LoadError {
 
     #[error("rusqlite error: {0}")]
     Rusqlite(#[from] rusqlite::Error),
+
+    #[error("r2d2 error: {0}")]
+    R2d2(#[from] r2d2::Error),
 }
 
 /// Errors that could arise while storing tokens in a database using
@@ -187,12 +194,16 @@ pub enum LoadError {
 pub enum StoreError {
     #[error("rusqlite error: {0}")]
     Rusqlite(#[from] rusqlite::Error),
+
+    #[error("r2d2 error: {0}")]
+    R2d2(#[from] r2d2::Error),
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
     use tempfile::{tempdir, TempDir};
+    use tracing::info;
     use twitch_irc::login::TokenStorage;
 
     use super::*;
@@ -201,14 +212,19 @@ mod tests {
         let db_dir = tempdir().expect("creating a temporary directory should succeed");
         let db_path = db_dir.path().join("db.sqlite3");
 
-        let mut conn = Connection::open(&db_path)
-            .expect("opening a database at a tempfile path should succeed");
+        let manager = SqliteConnectionManager::file(&db_path).with_init(|conn| {
+            let report = crate::db::migrations::runner()
+                .run(conn)
+                .expect("running migrations should succeed");
 
-        crate::db::migrations::runner()
-            .run(&mut conn)
-            .expect("running migrations should succeed");
+            info!(?report);
 
-        (db_dir, SQLiteTokenStore { conn })
+            Ok(())
+        });
+
+        let conn_pool = Pool::new(manager).expect("creating a connection pool should succeed");
+
+        (db_dir, SQLiteTokenStore { conn_pool })
     }
 
     fn token_1() -> UserAccessToken {

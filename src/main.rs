@@ -1,7 +1,7 @@
 use std::env;
 
 use eyre::{Result, WrapErr};
-use oxbow::auth::SQLiteTokenStore;
+use oxbow::{auth::SQLiteTokenStore, Bot};
 use rusqlite::Connection;
 use surf::Client as SurfClient;
 use tracing::info;
@@ -14,43 +14,22 @@ async fn main() -> Result<()> {
 
     dotenv::dotenv().ok();
 
-    let mut conn = Connection::open("./oxbow.sqlite3")?;
-    oxbow::db::migrations::runner().run(&mut conn)?;
-
     let client_id = get_env("CLIENT_ID")?;
     let client_secret = get_env("CLIENT_SECRET")?;
     let twitch_name = get_env("TWITCH_NAME")?;
     let twitch_channel = get_env("TWITCH_CHANNEL")?;
 
-    let mut store = SQLiteTokenStore::new(conn);
-    let _ = oxbow::auth::authenticate(&mut store, &client_id, &client_secret).await?;
+    let mut bot = Bot::the_builder()
+        .client_id(&client_id)
+        .client_secret(&client_secret)
+        .twitch_name(&twitch_name)
+        .add_channel(&twitch_channel)
+        .db_path("./oxbow.sqlite3")
+        .build()?;
+
+    bot.run().await?;
 
     let _client = TwitchClient::<'_, SurfClient>::new();
-
-    let creds = RefreshingLoginCredentials::new(twitch_name, client_id, client_secret, store);
-    let config = ClientConfig::new_simple(creds);
-
-    let (mut incoming_messages, client) =
-        TwitchIRCClient::<TCPTransport, RefreshingLoginCredentials<SQLiteTokenStore>>::new(config);
-
-    let join_handle = tokio::spawn(async move {
-        while let Some(message) = incoming_messages.recv().await {
-            info!(?message, "received");
-        }
-    });
-
-    client.join(twitch_channel.clone());
-
-    while client.get_channel_status(twitch_channel.clone()).await != (true, true) {
-        continue;
-    }
-
-    info!("joined channel {}", twitch_channel.clone());
-
-    info!("sending greeting");
-    client.say(twitch_channel.clone(), "uwu".to_owned()).await?;
-
-    join_handle.await.unwrap();
 
     Ok(())
 }
