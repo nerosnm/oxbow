@@ -1,6 +1,7 @@
 use std::env;
 
 use eyre::{Result, WrapErr};
+use rusqlite::Connection;
 use surf::Client as SurfClient;
 use tracing::info;
 use twitch_api2::TwitchClient;
@@ -11,6 +12,9 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     dotenv::dotenv().ok();
+
+    let mut conn = Connection::open("./oxbow.sqlite3")?;
+    oxbow::db::migrations::runner().run(&mut conn)?;
 
     let client_id = get_env("CLIENT_ID")?;
     let client_secret = get_env("CLIENT_SECRET")?;

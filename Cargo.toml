@@ -7,13 +7,20 @@ publish = false
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+async-trait = "0.1.50"
+chrono = "0.4.19"
 dotenv = "0.15.0"
 eyre = "0.6.5"
+rusqlite = "0.25.1"
 surf = "2.2.0"
 thiserror = "1.0.24"
 tracing = "0.1.25"
 tracing-subscriber = "0.2.17"
-twitch-irc = "2.2.0"
+
+[dependencies.refinery]
+git = "https://github.com/rust-db/refinery"
+branch = "main"
+features = ["rusqlite"]
 
 [dependencies.tokio]
 version = "1.5"
@@ -23,6 +30,13 @@ features = ["full"]
 version = "0.5.0-beta.2"
 features = ["client", "surf_client", "helix", "tmi"]
 
+[dependencies.twitch-irc]
+version = "2.2.0"
+features = ["refreshing-token"]
+
 [dependencies.twitch_oauth2_auth_flow]
 git = "https://github.com/stuck-overflow/twitch_oauth2_auth_flow"
 branch = "main"
+
+[dev-dependencies]
+tempfile = "3.2.0"
