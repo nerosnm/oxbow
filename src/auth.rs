@@ -1,20 +1,59 @@
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Connection};
 use thiserror::Error;
-use twitch_api2::twitch_oauth2::{scopes::Scope, UserToken};
+use twitch_api2::twitch_oauth2::{scopes::Scope, TwitchToken};
 use twitch_irc::login::{TokenStorage, UserAccessToken};
 
 /// Perform the OAuth2 authentication flow with the Twitch API to get a user
 /// token.
-pub async fn authenticate(client_id: &str, client_secret: &str) -> UserToken {
-    twitch_oauth2_auth_flow::auth_flow(
-        client_id,
-        client_secret,
-        Some(vec![Scope::ChatRead, Scope::ChatEdit]),
-        "http://localhost:10666",
-    )
-    .expect("authentication should succeed")
+pub async fn authenticate(
+    store: &mut SQLiteTokenStore,
+    client_id: &str,
+    client_secret: &str,
+) -> Result<UserAccessToken, AuthError> {
+    match store.load_token().await {
+        Ok(token) => Ok(token),
+        Err(LoadError::NotFound) => {
+            let twitch_oauth_token = twitch_oauth2_auth_flow::auth_flow(
+                client_id,
+                client_secret,
+                Some(vec![Scope::ChatRead, Scope::ChatEdit]),
+                "http://localhost:10666",
+            )
+            .expect("authentication should succeed");
+
+            let twitch_irc_token = UserAccessToken {
+                access_token: twitch_oauth_token.access_token.secret().to_owned(),
+                refresh_token: twitch_oauth_token
+                    .refresh_token
+                    .as_ref()
+                    .expect("refresh token should be provided")
+                    .secret()
+                    .to_owned(),
+                created_at: Utc::now(),
+                expires_at: Some(
+                    Utc::now()
+                        + Duration::from_std(twitch_oauth_token.expires_in())
+                            .expect("duration should convert from std to chrono"),
+                ),
+            };
+
+            store.store_token(&twitch_irc_token)?;
+
+            Ok(twitch_irc_token)
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("error loading token: {0}")]
+    Load(#[from] LoadError),
+
+    #[error("error storing token: {0}")]
+    Store(#[from] StoreError),
 }
 
 /// Storage of a [`UserAccessToken`] in an SQLite3 database.
@@ -24,24 +63,22 @@ pub struct SQLiteTokenStore {
 }
 
 impl SQLiteTokenStore {
-    /// Create an `SQLiteStorage` with a connection to the database to store
-    /// values in and the initial token to store.
-    ///
-    /// This will store the initial value in the `token` table.
-    pub fn with_initial(conn: Connection, token: &UserAccessToken) -> Result<Self, StoreError> {
-        let mut storage = Self::new(conn);
-        storage.insert(token)?;
-
-        Ok(storage)
-    }
-
-    /// Create an `SQLiteStorage` without storing any values.
-    fn new(conn: Connection) -> Self {
+    /// Create an `SQLiteStorage` with a connection to a database.
+    pub fn new(conn: Connection) -> Self {
         Self { conn }
     }
 
-    /// Store `token` in the `token` table.
-    fn insert(&mut self, token: &UserAccessToken) -> Result<(), StoreError> {
+    /// Store `token` in the `token` table, replacing any other values.
+    pub fn store_token(&mut self, token: &UserAccessToken) -> Result<(), StoreError> {
+        // Make sure there are no other rows in the token table.
+        self.conn.execute(
+            r#"
+            DELETE FROM token;
+            "#,
+            params![],
+        )?;
+
+        // Insert the token into the token table.
         self.conn.execute(
             r#"
             INSERT INTO token (
@@ -154,8 +191,6 @@ pub enum StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-
     use chrono::Duration;
     use tempfile::{tempdir, TempDir};
     use twitch_irc::login::TokenStorage;
@@ -165,10 +200,13 @@ mod tests {
     fn storage() -> (TempDir, SQLiteTokenStore) {
         let db_dir = tempdir().expect("creating a temporary directory should succeed");
         let db_path = db_dir.path().join("db.sqlite3");
-        let _ = File::create(&db_path).expect("creating a file in the temp dir should succeed");
 
-        let conn = Connection::open(&db_path)
+        let mut conn = Connection::open(&db_path)
             .expect("opening a database at a tempfile path should succeed");
+
+        crate::db::migrations::runner()
+            .run(&mut conn)
+            .expect("running migrations should succeed");
 
         (db_dir, SQLiteTokenStore { conn })
     }
@@ -199,7 +237,7 @@ mod tests {
         let token = token_1();
 
         storage
-            .insert(&token)
+            .store_token(&token)
             .expect("storing the initial token should succeed");
 
         let loaded = storage
@@ -237,7 +275,7 @@ mod tests {
         let new_token = token_2();
 
         storage
-            .insert(&old_token)
+            .store_token(&old_token)
             .expect("storing the initial token should succeed");
 
         let loaded = storage

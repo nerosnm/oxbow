@@ -1,11 +1,12 @@
 use std::env;
 
 use eyre::{Result, WrapErr};
+use oxbow::auth::SQLiteTokenStore;
 use rusqlite::Connection;
 use surf::Client as SurfClient;
 use tracing::info;
 use twitch_api2::TwitchClient;
-use twitch_irc::{login::StaticLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
+use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,16 +22,16 @@ async fn main() -> Result<()> {
     let twitch_name = get_env("TWITCH_NAME")?;
     let twitch_channel = get_env("TWITCH_CHANNEL")?;
 
-    let token = oxbow::auth::authenticate(&client_id, &client_secret).await;
+    let mut store = SQLiteTokenStore::new(conn);
+    let _ = oxbow::auth::authenticate(&mut store, &client_id, &client_secret).await?;
 
     let _client = TwitchClient::<'_, SurfClient>::new();
 
-    let token = token.access_token.secret().to_string();
-    let creds = StaticLoginCredentials::new(twitch_name, Some(token));
+    let creds = RefreshingLoginCredentials::new(twitch_name, client_id, client_secret, store);
     let config = ClientConfig::new_simple(creds);
 
     let (mut incoming_messages, client) =
-        TwitchIRCClient::<TCPTransport, StaticLoginCredentials>::new(config);
+        TwitchIRCClient::<TCPTransport, RefreshingLoginCredentials<SQLiteTokenStore>>::new(config);
 
     let join_handle = tokio::spawn(async move {
         while let Some(message) = incoming_messages.recv().await {
