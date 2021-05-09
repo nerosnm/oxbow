@@ -3,12 +3,16 @@ use chrono::{DateTime, Duration, Utc};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
+use tap::TapFallible;
 use thiserror::Error;
+use tracing::{error, info, instrument};
 use twitch_api2::twitch_oauth2::{scopes::Scope, TwitchToken};
 use twitch_irc::login::{TokenStorage, UserAccessToken};
+use twitch_oauth2_auth_flow::AuthFlowError;
 
 /// Perform the OAuth2 authentication flow with the Twitch API to get a user
 /// token.
+#[instrument(skip(store, client_id, client_secret))]
 pub async fn authenticate(
     store: &mut SQLiteTokenStore,
     client_id: &str,
@@ -17,13 +21,14 @@ pub async fn authenticate(
     match store.load_token().await {
         Ok(token) => Ok(token),
         Err(LoadError::NotFound) => {
+            info!("stored token not found, performing OAuth flow");
+
             let twitch_oauth_token = twitch_oauth2_auth_flow::auth_flow(
                 client_id,
                 client_secret,
                 Some(vec![Scope::ChatRead, Scope::ChatEdit]),
                 "http://localhost:10666",
-            )
-            .expect("authentication should succeed");
+            )?;
 
             let twitch_irc_token = UserAccessToken {
                 access_token: twitch_oauth_token.access_token.secret().to_owned(),
@@ -45,10 +50,11 @@ pub async fn authenticate(
 
             Ok(twitch_irc_token)
         }
-        Err(err) => Err(err.into()),
+        Err(err) => Err(err.into()).tap_err(|e| error!(?e)),
     }
 }
 
+/// Errors that could arise while performing authentication with Twitch.
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("error loading token: {0}")]
@@ -56,6 +62,9 @@ pub enum AuthError {
 
     #[error("error storing token: {0}")]
     Store(#[from] StoreError),
+
+    #[error("auth flow error: {0}")]
+    AuthFlow(#[from] AuthFlowError),
 }
 
 /// Storage of a [`UserAccessToken`] in an SQLite3 database.
@@ -71,7 +80,10 @@ impl SQLiteTokenStore {
     }
 
     /// Store `token` in the `token` table, replacing any other values.
+    #[instrument(skip(self, token))]
     pub fn store_token(&mut self, token: &UserAccessToken) -> Result<(), StoreError> {
+        info!(created_at = ?token.created_at, expires_at = ?token.expires_at, "storing token");
+
         // Make sure there are no other rows in the token table.
         self.conn_pool.get()?.execute(
             r#"
@@ -108,6 +120,7 @@ impl TokenStorage for SQLiteTokenStore {
     type LoadError = LoadError;
     type UpdateError = StoreError;
 
+    #[instrument(skip(self))]
     async fn load_token(&mut self) -> Result<UserAccessToken, Self::LoadError> {
         let conn = self.conn_pool.get()?;
 
@@ -143,13 +156,16 @@ impl TokenStorage for SQLiteTokenStore {
                 refresh_token,
                 created_at,
                 expires_at,
-            })
+            }).tap_ok(|t| info!(created_at = ?t.created_at, expires_at = ?t.expires_at, "loaded stored token"))
         } else {
             Err(LoadError::NotFound)
         }
     }
 
+    #[instrument(skip(self, token))]
     async fn update_token(&mut self, token: &UserAccessToken) -> Result<(), Self::UpdateError> {
+        info!(created_at = ?token.created_at, expires_at = ?token.expires_at, "updating stored token");
+
         self.conn_pool.get()?.execute(
             r#"
             UPDATE token

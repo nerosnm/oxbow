@@ -4,8 +4,11 @@ use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
-use tracing::info;
-use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
+use tracing::{info, info_span, span, Instrument, Level};
+use twitch_irc::{
+    login::RefreshingLoginCredentials, message::ServerMessage, ClientConfig, TCPTransport,
+    TwitchIRCClient,
+};
 
 use crate::auth::SQLiteTokenStore;
 
@@ -29,6 +32,10 @@ impl Bot {
         BotTheBuilder::default()
     }
 
+    /// Main run loop for the bot.
+    ///
+    /// Spawns tasks to receive messages, and to send messages to each connected
+    /// channel.
     pub async fn run(&mut self) -> Result<(), BotError> {
         let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
         let _ = crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
@@ -46,34 +53,45 @@ impl Bot {
             RefreshingLoginCredentials<SQLiteTokenStore>,
         >::new(config);
 
-        let join_handle = tokio::spawn(async move {
-            while let Some(message) = incoming_messages.recv().await {
-                info!(?message, "received");
-            }
-        });
-
-        for channel in &self.channels {
-            let channel = channel.clone();
-            let client = client.clone();
-
-            tokio::spawn(async move {
-                client.join(channel.clone());
-
-                while client.get_channel_status(channel.clone()).await != (true, true) {
-                    continue;
+        let receive_loop = tokio::spawn(
+            async move {
+                while let Some(message) = incoming_messages.recv().await {
+                    match message {
+                        ServerMessage::Privmsg(msg) => {
+                            info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+                        }
+                        _ => (),
+                    }
                 }
+            }
+            .instrument(info_span!("receive_loop")),
+        );
 
-                info!("joined channel {}", channel.clone());
+        for channel in self.channels.iter() {
+            let client = client.clone();
+            let ch = channel.to_owned();
 
-                info!("sending greeting");
-                client
-                    .say(channel.clone(), "uwu".to_owned())
-                    .await
-                    .expect("unable to send greeting");
-            });
+            tokio::spawn(
+                async move {
+                    client.join(ch.clone());
+
+                    while client.get_channel_status(ch.clone()).await != (true, true) {
+                        continue;
+                    }
+
+                    info!("joined channel");
+
+                    info!("sending greeting");
+                    client
+                        .say(ch.clone(), "uwu".to_owned())
+                        .await
+                        .expect("unable to send greeting");
+                }
+                .instrument(span!(Level::INFO, "greeting", ?channel)),
+            );
         }
 
-        join_handle.await.unwrap();
+        receive_loop.await.unwrap();
 
         Ok(())
     }
