@@ -1,3 +1,18 @@
+use std::fmt::Debug;
+
+/// A value bundled together with some [`Metadata`].
+#[derive(Debug, Clone)]
+pub struct WithMeta<T>(pub T, pub Metadata)
+where
+    T: Debug + Clone;
+
+/// Metadata about a task, so that it can be tracked through from the initial
+/// trigger to the final response.
+#[derive(Debug, Clone)]
+pub struct Metadata {
+    pub id: String,
+}
+
 /// Commands to perform, which may or may not result in a [`Response`] being
 /// sent.
 #[derive(Debug, Clone)]

@@ -3,9 +3,13 @@ use std::path::{Path, PathBuf};
 use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use tap::{TapFallible, TapOptional};
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, info, instrument};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time::Duration,
+};
+use tracing::{debug, error, info, instrument};
 use twitch_irc::{
     login::{LoginCredentials, RefreshingLoginCredentials},
     message::ServerMessage,
@@ -14,7 +18,7 @@ use twitch_irc::{
 
 use crate::{
     auth::SQLiteTokenStore,
-    msg::{ImplicitTask, Response, Task},
+    msg::{ImplicitTask, Metadata, Response, Task, WithMeta},
 };
 
 /// The main `oxbow` bot entry point.
@@ -98,23 +102,39 @@ impl Bot {
     #[instrument(skip(incoming, task_tx))]
     async fn receive(
         mut incoming: mpsc::UnboundedReceiver<ServerMessage>,
-        task_tx: mpsc::UnboundedSender<Task>,
+        task_tx: mpsc::UnboundedSender<WithMeta<Task>>,
     ) {
-        while let Some(message) = incoming.recv().await {
-            match message {
-                ServerMessage::Privmsg(msg) => {
-                    if msg.message_text.contains("hi") && msg.message_text.contains("@oxoboxowot") {
-                        info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+        loop {
+            let message = incoming
+                .recv()
+                .await
+                .tap_none(|| error!("failed to receive incoming message"));
 
-                        task_tx
-                            .send(Task::Implicit(ImplicitTask::Greet {
+            let task = match message {
+                Some(ServerMessage::Privmsg(msg)) => {
+                    if msg.message_text.contains("hi") && msg.message_text.contains("@oxoboxowot") {
+                        info!(id = %msg.message_id, ?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+
+                        Some(WithMeta(
+                            Task::Implicit(ImplicitTask::Greet {
                                 channel: msg.channel_login,
                                 user: msg.sender.login,
-                            }))
-                            .expect("sending tasks should succeed");
+                            }),
+                            Metadata { id: msg.message_id },
+                        ))
+                    } else {
+                        None
                     }
                 }
-                _ => (),
+                Some(_) => None,
+                None => None,
+            };
+
+            if let Some(WithMeta(task, meta)) = task {
+                let id = meta.id.clone();
+                let _ = task_tx
+                    .send(WithMeta(task, meta))
+                    .tap_err(|e| error!(%id, error = ?e, "failed to send task message"));
             }
         }
     }
@@ -123,26 +143,37 @@ impl Bot {
     /// [`Response`] in `res_tx` with the appropriate response to send.
     #[instrument(skip(task_rx, res_tx, _pool))]
     async fn process(
-        mut task_rx: mpsc::UnboundedReceiver<Task>,
-        res_tx: broadcast::Sender<Response>,
+        mut task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
+        res_tx: broadcast::Sender<WithMeta<Response>>,
         _pool: Pool<SqliteConnectionManager>,
     ) {
         loop {
             let task = task_rx
                 .recv()
                 .await
-                .expect("receiving tasks should succeed");
+                .tap_none(|| error!("failed to receive task message"));
 
-            match task {
-                Task::Implicit(ImplicitTask::Greet { channel, user }) => {
-                    res_tx
-                        .send(Response::Say {
+            let response = match task {
+                Some(WithMeta(Task::Implicit(ImplicitTask::Greet { channel, user }), meta)) => {
+                    info!(id = %meta.id, ?channel, ?user, "implicit greet task");
+
+                    Some(WithMeta(
+                        Response::Say {
                             channel,
                             message: format!("uwu *nuzzles @{}*", user),
-                        })
-                        .expect("sending messages should succeed");
+                        },
+                        meta,
+                    ))
                 }
-                _ => (),
+                Some(_) => None,
+                None => None,
+            };
+
+            if let Some(WithMeta(res, meta)) = response {
+                let id = meta.id.clone();
+                let _ = res_tx
+                    .send(WithMeta(res, meta))
+                    .tap_err(|e| error!(%id, error = ?e, "failed to send response message"));
             }
         }
     }
@@ -153,7 +184,7 @@ impl Bot {
     async fn respond<T, L>(
         client: TwitchIRCClient<T, L>,
         channel: String,
-        mut res_rx: broadcast::Receiver<Response>,
+        mut res_rx: broadcast::Receiver<WithMeta<Response>>,
     ) where
         T: Transport,
         L: LoginCredentials,
@@ -161,7 +192,7 @@ impl Bot {
         client.join(channel.clone());
 
         while client.get_channel_status(channel.clone()).await != (true, true) {
-            continue;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         info!("joined channel");
@@ -170,21 +201,35 @@ impl Bot {
             let res = res_rx
                 .recv()
                 .await
-                .expect("receiving responses should succeed");
+                .tap_err(|e| error!(error = ?e, "failed to receive response message"));
 
-            match res {
-                Response::Say {
-                    channel: msg_channel,
-                    message,
-                } if msg_channel == channel => {
-                    info!(response.channel = ?msg_channel, response.message = ?message, "sending response");
+            let response = match res {
+                Ok(WithMeta(
+                    Response::Say {
+                        channel: msg_channel,
+                        message,
+                    },
+                    meta,
+                )) if msg_channel == channel => {
+                    info!(id = %meta.id, response.channel = ?msg_channel, response.message = ?message, "sending response");
 
-                    client
-                        .say(msg_channel, message)
-                        .await
-                        .expect("unable to send response");
+                    Some(WithMeta((msg_channel, message), meta))
                 }
-                _ => (),
+                Ok(WithMeta(
+                    Response::Say {
+                        channel: _,
+                        message: _,
+                    },
+                    _,
+                )) => None,
+                Err(_) => None,
+            };
+
+            if let Some(WithMeta((channel, message), meta)) = response {
+                let _ = client
+                    .say(channel, message)
+                    .await
+                    .tap_err(|e| error!(id = %meta.id, error = ?e, "unable to send response"));
             }
         }
     }
