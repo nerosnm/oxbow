@@ -1,9 +1,11 @@
-use std::env;
-
-use eyre::{Result, WrapErr};
+use clap::Clap;
+use eyre::Result;
+use opts::Opts;
 use oxbow::Bot;
 use surf::Client as SurfClient;
 use twitch_api2::TwitchClient;
+
+mod opts;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -11,26 +13,21 @@ async fn main() -> Result<()> {
 
     dotenv::dotenv().ok();
 
-    let client_id = get_env("CLIENT_ID")?;
-    let client_secret = get_env("CLIENT_SECRET")?;
-    let twitch_name = get_env("TWITCH_NAME")?;
-    let twitch_channel = get_env("TWITCH_CHANNEL")?;
+    let opts: Opts = Opts::parse();
 
-    let mut bot = Bot::the_builder()
-        .client_id(&client_id)
-        .client_secret(&client_secret)
-        .twitch_name(&twitch_name)
-        .add_channel(&twitch_channel)
-        .db_path("./oxbow.sqlite3")
-        .build()?;
+    let mut bot_the_builder = Bot::the_builder()
+        .client_id(&opts.client_id)
+        .client_secret(&opts.client_secret)
+        .twitch_name(&opts.twitch_name)
+        .extend_channels(&opts.channels);
 
-    bot.run().await?;
+    if let Some(db_path) = opts.database {
+        bot_the_builder = bot_the_builder.db_path(db_path);
+    }
+
+    bot_the_builder.build()?.run().await?;
 
     let _client = TwitchClient::<'_, SurfClient>::new();
 
     Ok(())
-}
-
-fn get_env(name: &str) -> eyre::Result<String> {
-    env::var(name).wrap_err_with(|| format!("expected a {} in the environment", name))
 }

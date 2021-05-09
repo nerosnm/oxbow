@@ -4,7 +4,7 @@ use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
-use tracing::{info, info_span, span, Instrument, Level};
+use tracing::{debug, info, info_span, span, Instrument, Level};
 use twitch_irc::{
     login::RefreshingLoginCredentials, message::ServerMessage, ClientConfig, TCPTransport,
     TwitchIRCClient,
@@ -185,7 +185,7 @@ impl BotBuilder {
                     .run(conn)
                     .expect("running migrations should succeed");
 
-                info!(?report);
+                debug!(?report);
 
                 Ok(())
             });
