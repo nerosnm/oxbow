@@ -4,11 +4,12 @@ use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
-use tokio::sync::broadcast;
-use tracing::{debug, info, info_span, span, Instrument, Level};
+use tokio::sync::{broadcast, mpsc::UnboundedReceiver};
+use tracing::{debug, info, instrument};
 use twitch_irc::{
-    login::RefreshingLoginCredentials, message::ServerMessage, ClientConfig, TCPTransport,
-    TwitchIRCClient,
+    login::{LoginCredentials, RefreshingLoginCredentials},
+    message::ServerMessage,
+    ClientConfig, TCPTransport, Transport, TwitchIRCClient,
 };
 
 use crate::{auth::SQLiteTokenStore, msg::Message};
@@ -49,7 +50,7 @@ impl Bot {
         );
         let config = ClientConfig::new_simple(creds);
 
-        let (mut incoming_messages, client) = TwitchIRCClient::<
+        let (incoming_messages, client) = TwitchIRCClient::<
             TCPTransport,
             RefreshingLoginCredentials<SQLiteTokenStore>,
         >::new(config);
@@ -57,66 +58,87 @@ impl Bot {
         let (tx, _rx) = broadcast::channel::<Message>(16);
         let tx1 = tx.clone();
 
-        let receive_loop = tokio::spawn(
-            async move {
-                while let Some(message) = incoming_messages.recv().await {
-                    match message {
-                        ServerMessage::Privmsg(msg) => {
-                            if &*msg.message_text == "hi @oxoboxowot" {
-                                info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
-
-                                tx1.send(Message::Response {
-                                    channel: msg.channel_login.clone(),
-                                    message: format!("uwu @{} *nuzzles you*", msg.sender.login),
-                                })
-                                .expect("sending messages should succeed");
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-            }
-            .instrument(info_span!("receive")),
-        );
+        let receive_loop = tokio::spawn(Self::receive(incoming_messages, tx1));
 
         for channel in self.channels.iter() {
-            let client = client.clone();
-            let ch = channel.to_owned();
-            let mut rx = tx.subscribe();
-
-            tokio::spawn(
-                async move {
-                    client.join(ch.clone());
-
-                    while client.get_channel_status(ch.clone()).await != (true, true) {
-                        continue;
-                    }
-
-                    info!("joined channel");
-
-                    loop {
-                        let msg = rx.recv().await.expect("receiving messages should succeed");
-
-                        match msg {
-                            Message::Response { channel, message } if channel == ch => {
-                                info!(response.channel = ?channel, response.message = ?message, "sending response");
-
-                                client
-                                    .say(channel, message)
-                                    .await
-                                    .expect("unable to send response");
-                            }
-                            _ => (),
-                        }
-                    }
-                }
-                .instrument(span!(Level::INFO, "respond", ?channel)),
-            );
+            tokio::spawn(Self::respond(
+                client.clone(),
+                channel.to_owned(),
+                tx.subscribe(),
+            ));
         }
 
         receive_loop.await.unwrap();
 
         Ok(())
+    }
+
+    /// Loops over incoming messages and if any are a recognised command, sends
+    /// a message in `msg_tx` with the appropriate action to take.
+    #[instrument(skip(incoming, msg_tx))]
+    async fn receive(
+        mut incoming: UnboundedReceiver<ServerMessage>,
+        msg_tx: broadcast::Sender<Message>,
+    ) {
+        while let Some(message) = incoming.recv().await {
+            match message {
+                ServerMessage::Privmsg(msg) => {
+                    if &*msg.message_text == "hi @oxoboxowot" {
+                        info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+
+                        msg_tx
+                            .send(Message::Response {
+                                channel: msg.channel_login.clone(),
+                                message: format!("uwu @{} *nuzzles you*", msg.sender.login),
+                            })
+                            .expect("sending messages should succeed");
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+
+    /// Watches for relevant messages coming in through `msg_rx` and acts on
+    /// them in `channel`, such as sending responses.
+    #[instrument(skip(client, msg_rx))]
+    async fn respond<T, L>(
+        client: TwitchIRCClient<T, L>,
+        channel: String,
+        mut msg_rx: broadcast::Receiver<Message>,
+    ) where
+        T: Transport,
+        L: LoginCredentials,
+    {
+        client.join(channel.clone());
+
+        while client.get_channel_status(channel.clone()).await != (true, true) {
+            continue;
+        }
+
+        info!("joined channel");
+
+        loop {
+            let msg = msg_rx
+                .recv()
+                .await
+                .expect("receiving messages should succeed");
+
+            match msg {
+                Message::Response {
+                    channel: msg_channel,
+                    message,
+                } if msg_channel == channel => {
+                    info!(response.channel = ?msg_channel, response.message = ?message, "sending response");
+
+                    client
+                        .say(msg_channel, message)
+                        .await
+                        .expect("unable to send response");
+                }
+                _ => (),
+            }
+        }
     }
 }
 
