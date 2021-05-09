@@ -5,7 +5,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 use tap::TapFallible;
 use thiserror::Error;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, instrument};
 use twitch_api2::twitch_oauth2::{scopes::Scope, TwitchToken};
 use twitch_irc::login::{TokenStorage, UserAccessToken};
 use twitch_oauth2_auth_flow::AuthFlowError;
@@ -19,7 +19,7 @@ pub async fn authenticate(
     client_secret: &str,
 ) -> Result<(), AuthError> {
     if !store.has_stored_token()? {
-        info!("stored token not found, performing OAuth flow");
+        debug!("stored token not found, performing OAuth flow");
 
         let twitch_oauth_token = twitch_oauth2_auth_flow::auth_flow(
             client_id,
@@ -45,6 +45,8 @@ pub async fn authenticate(
         };
 
         store.store_token(&twitch_irc_token)?;
+    } else {
+        debug!("found stored token");
     }
 
     Ok(())
@@ -76,7 +78,10 @@ impl SQLiteTokenStore {
     }
 
     /// Check whether a token is currently stored in the database.
+    #[instrument(skip(self))]
     pub fn has_stored_token(&self) -> Result<bool, LoadError> {
+        debug!("checking for stored token");
+
         let conn = self.conn_pool.get()?;
 
         let mut stmt = conn.prepare(
@@ -98,7 +103,7 @@ impl SQLiteTokenStore {
     /// Store `token` in the `token` table, replacing any other values.
     #[instrument(skip(self, token))]
     pub fn store_token(&mut self, token: &UserAccessToken) -> Result<(), StoreError> {
-        info!(created_at = ?token.created_at, expires_at = ?token.expires_at, "storing token");
+        debug!(created_at = ?token.created_at, expires_at = ?token.expires_at, "storing token");
 
         // Make sure there are no other rows in the token table.
         self.conn_pool.get()?.execute(
@@ -172,7 +177,7 @@ impl TokenStorage for SQLiteTokenStore {
                 refresh_token,
                 created_at,
                 expires_at,
-            }).tap_ok(|t| info!(created_at = ?t.created_at, expires_at = ?t.expires_at, "loaded stored token"))
+            }).tap_ok(|t| debug!(created_at = ?t.created_at, expires_at = ?t.expires_at, "loaded stored token"))
         } else {
             Err(LoadError::NotFound)
         }
@@ -180,7 +185,7 @@ impl TokenStorage for SQLiteTokenStore {
 
     #[instrument(skip(self, token))]
     async fn update_token(&mut self, token: &UserAccessToken) -> Result<(), Self::UpdateError> {
-        info!(created_at = ?token.created_at, expires_at = ?token.expires_at, "updating stored token");
+        debug!(created_at = ?token.created_at, expires_at = ?token.expires_at, "updating stored token");
 
         self.conn_pool.get()?.execute(
             r#"

@@ -13,7 +13,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::Duration,
 };
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, trace};
 use twitch_irc::{
     login::{LoginCredentials, RefreshingLoginCredentials},
     message::ServerMessage,
@@ -119,10 +119,15 @@ impl Bot {
         task_tx: mpsc::UnboundedSender<WithMeta<Task>>,
         prefix: char,
     ) {
+        debug!("starting");
+
         loop {
+            trace!("waiting for incoming message");
+
             let message = incoming
                 .recv()
                 .await
+                .tap_some(|_| trace!("received incoming message"))
                 .tap_none(|| error!("failed to receive incoming message"));
 
             let task = match message {
@@ -131,6 +136,8 @@ impl Bot {
 
                     if let Some(tail) = msg.message_text.strip_prefix(prefix) {
                         if let Some(tail) = tail.trim().strip_prefix("addcommand") {
+                            debug!(id = %meta.id, command = "addcommand", "identified command");
+
                             if let Some((trigger, response)) = tail.trim().split_once(" ") {
                                 info!(id = %meta.id, ?trigger, ?response, "adding command");
 
@@ -151,6 +158,7 @@ impl Bot {
                     } else if msg.message_text.contains("hi")
                         && msg.message_text.contains("@oxoboxowot")
                     {
+                        trace!(id = %meta.id, implicit_command = "greeting", "implicit command identified");
                         info!(id = %meta.id, ?msg.channel_login, ?msg.sender.login, ?msg.message_text);
 
                         Some(WithMeta(
@@ -186,10 +194,15 @@ impl Bot {
         pool: Pool<SqliteConnectionManager>,
         prefix: char,
     ) {
+        debug!("starting");
+
         loop {
+            trace!("waiting for task message");
+
             let task = task_rx
                 .recv()
                 .await
+                .tap_some(|_| trace!("received task message"))
                 .tap_none(|| error!("failed to receive task message"));
 
             let response = match task {
@@ -264,6 +277,8 @@ impl Bot {
         T: Transport,
         L: LoginCredentials,
     {
+        debug!("starting");
+
         client.join(channel.clone());
 
         while client.get_channel_status(channel.clone()).await != (true, true) {
@@ -273,9 +288,12 @@ impl Bot {
         info!("joined channel");
 
         loop {
+            trace!("waiting for response message");
+
             let res = res_rx
                 .recv()
                 .await
+                .tap_ok(|_| trace!("received response message"))
                 .tap_err(|e| error!(error = ?e, "failed to receive response message"));
 
             let response = match res {
