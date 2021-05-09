@@ -65,11 +65,7 @@ impl Bot {
             store,
         );
         let config = ClientConfig::new_simple(creds);
-
-        let (incoming_messages, client) = TwitchIRCClient::<
-            TCPTransport,
-            RefreshingLoginCredentials<SQLiteTokenStore>,
-        >::new(config);
+        let (incoming_messages, client) = TwitchIRCClient::<TCPTransport, _>::new(config);
 
         // Channel for the receive loop to trigger tasks in the process loop.
         let (task_tx, task_rx) = mpsc::unbounded_channel();
