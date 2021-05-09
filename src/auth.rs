@@ -17,41 +17,37 @@ pub async fn authenticate(
     store: &mut SQLiteTokenStore,
     client_id: &str,
     client_secret: &str,
-) -> Result<UserAccessToken, AuthError> {
-    match store.load_token().await {
-        Ok(token) => Ok(token),
-        Err(LoadError::NotFound) => {
-            info!("stored token not found, performing OAuth flow");
+) -> Result<(), AuthError> {
+    if !store.has_stored_token()? {
+        info!("stored token not found, performing OAuth flow");
 
-            let twitch_oauth_token = twitch_oauth2_auth_flow::auth_flow(
-                client_id,
-                client_secret,
-                Some(vec![Scope::ChatRead, Scope::ChatEdit]),
-                "http://localhost:10666",
-            )?;
+        let twitch_oauth_token = twitch_oauth2_auth_flow::auth_flow(
+            client_id,
+            client_secret,
+            Some(vec![Scope::ChatRead, Scope::ChatEdit]),
+            "http://localhost:10666",
+        )?;
 
-            let twitch_irc_token = UserAccessToken {
-                access_token: twitch_oauth_token.access_token.secret().to_owned(),
-                refresh_token: twitch_oauth_token
-                    .refresh_token
-                    .as_ref()
-                    .expect("refresh token should be provided")
-                    .secret()
-                    .to_owned(),
-                created_at: Utc::now(),
-                expires_at: Some(
-                    Utc::now()
-                        + Duration::from_std(twitch_oauth_token.expires_in())
-                            .expect("duration should convert from std to chrono"),
-                ),
-            };
+        let twitch_irc_token = UserAccessToken {
+            access_token: twitch_oauth_token.access_token.secret().to_owned(),
+            refresh_token: twitch_oauth_token
+                .refresh_token
+                .as_ref()
+                .expect("refresh token should be provided")
+                .secret()
+                .to_owned(),
+            created_at: Utc::now(),
+            expires_at: Some(
+                Utc::now()
+                    + Duration::from_std(twitch_oauth_token.expires_in())
+                        .expect("duration should convert from std to chrono"),
+            ),
+        };
 
-            store.store_token(&twitch_irc_token)?;
-
-            Ok(twitch_irc_token)
-        }
-        Err(err) => Err(err.into()).tap_err(|e| error!(?e)),
+        store.store_token(&twitch_irc_token)?;
     }
+
+    Ok(())
 }
 
 /// Errors that could arise while performing authentication with Twitch.
@@ -77,6 +73,26 @@ impl SQLiteTokenStore {
     /// Create an `SQLiteStorage` with a connection to a database.
     pub fn new(conn_pool: Pool<SqliteConnectionManager>) -> Self {
         Self { conn_pool }
+    }
+
+    /// Check whether a token is currently stored in the database.
+    pub fn has_stored_token(&self) -> Result<bool, LoadError> {
+        let conn = self.conn_pool.get()?;
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT 1
+            FROM
+                token
+            LIMIT
+                1;
+            "#,
+        )?;
+
+        let mut rows = stmt.query([])?;
+        let value_exists = rows.next()?.is_some();
+
+        Ok(value_exists)
     }
 
     /// Store `token` in the `token` table, replacing any other values.
@@ -294,6 +310,32 @@ mod tests {
         assert_eq!(
             token.expires_at, loaded.expires_at,
             "loaded expires_at does not match the original"
+        );
+    }
+
+    /// Test that an [`SQLiteTokenStore`] correctly reports whether a token is
+    /// currently stored.
+    #[tokio::test]
+    async fn check_token_exists() {
+        let (_db_dir, mut storage) = storage();
+        let token = token_1();
+
+        assert!(
+            !storage
+                .has_stored_token()
+                .expect("checking for a stored token should succeed"),
+            "empty storage should not report that a token is stored"
+        );
+
+        storage
+            .store_token(&token)
+            .expect("storing a token should succeed");
+
+        assert!(
+            storage
+                .has_stored_token()
+                .expect("checking for a stored token should succeed"),
+            "storage containing a token should not report that it is empty"
         );
     }
 

@@ -56,7 +56,7 @@ impl Bot {
         debug!(?report);
 
         let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
-        let _ = crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
+        crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
 
         let creds = RefreshingLoginCredentials::new(
             self.twitch_name.clone(),
