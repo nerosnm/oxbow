@@ -27,4 +27,8 @@ pub struct Opts {
     /// A comma-separated list of channels to join.
     #[clap(short = 'c', long = "channels")]
     pub channels: Vec<String>,
+
+    /// The character that commands start with.
+    #[clap(long, default_value = "!")]
+    pub prefix: char,
 }

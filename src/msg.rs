@@ -17,7 +17,7 @@ pub struct Metadata {
 /// sent.
 #[derive(Debug, Clone)]
 pub enum Task {
-    /// Respond to a `command` sent by a `sender` in a `channel`.
+    /// Respond to an arbitrary `command` sent by a `sender` in a `channel`.
     Command {
         /// The Twitch IRC channel the command was sent in.
         channel: String,
@@ -27,6 +27,7 @@ pub enum Task {
         command: String,
     },
     Implicit(ImplicitTask),
+    BuiltIn(BuiltInCommand),
 }
 
 /// Commands which are not triggered by an explicit message of the form
@@ -38,6 +39,21 @@ pub enum ImplicitTask {
         channel: String,
         /// The user to greet.
         user: String,
+    },
+}
+
+/// Commands that are built in to the bot, rather than being arbitrary commands
+/// stored in the database.
+#[derive(Debug, Clone)]
+pub enum BuiltInCommand {
+    /// Add a new command to the database, with the given trigger and response.
+    AddCommand {
+        /// The channel the command should be added in.
+        channel: String,
+        /// The string after the prefix that should cause this command to run.
+        trigger: String,
+        /// The response that should be sent in a message.
+        response: String,
     },
 }
 

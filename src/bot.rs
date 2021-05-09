@@ -1,8 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+    ops::DerefMut,
+    path::{Path, PathBuf},
+};
 
 use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
 use tap::{TapFallible, TapOptional};
 use thiserror::Error;
 use tokio::{
@@ -18,7 +22,7 @@ use twitch_irc::{
 
 use crate::{
     auth::SQLiteTokenStore,
-    msg::{ImplicitTask, Metadata, Response, Task, WithMeta},
+    msg::{BuiltInCommand, ImplicitTask, Metadata, Response, Task, WithMeta},
 };
 
 /// The main `oxbow` bot entry point.
@@ -27,6 +31,7 @@ pub struct Bot {
     client_secret: String,
     twitch_name: String,
     channels: Vec<String>,
+    prefix: char,
     conn_pool: Pool<SqliteConnectionManager>,
 }
 
@@ -48,6 +53,10 @@ impl Bot {
     pub async fn run(&mut self) -> Result<(), BotError> {
         let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
         let _ = crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
+
+        let mut conn = self.conn_pool.get()?;
+        let report = crate::db::migrations::runner().run(conn.deref_mut())?;
+        debug!(?report);
 
         let creds = RefreshingLoginCredentials::new(
             self.twitch_name.clone(),
@@ -71,7 +80,11 @@ impl Bot {
 
         // Spawn a receive loop to interpret incoming messages and turn them
         // into Tasks if necessary.
-        let receive_loop = tokio::spawn(Self::receive(incoming_messages, task_tx.clone()));
+        let receive_loop = tokio::spawn(Self::receive(
+            incoming_messages,
+            task_tx.clone(),
+            self.prefix,
+        ));
 
         // Spawn a processing loop to interpret Tasks and turn them into
         // Responses if necessary.
@@ -79,6 +92,7 @@ impl Bot {
             task_rx,
             res_tx.clone(),
             self.conn_pool.clone(),
+            self.prefix,
         ));
 
         // For every channel, we need a response loop to perform Responses if
@@ -99,10 +113,11 @@ impl Bot {
 
     /// Loops over incoming messages and if any are a recognised command, sends
     /// a [`Task`] in `task_tx` with the appropriate task to perform.
-    #[instrument(skip(incoming, task_tx))]
+    #[instrument(skip(incoming, task_tx, prefix))]
     async fn receive(
         mut incoming: mpsc::UnboundedReceiver<ServerMessage>,
         task_tx: mpsc::UnboundedSender<WithMeta<Task>>,
+        prefix: char,
     ) {
         loop {
             let message = incoming
@@ -112,15 +127,38 @@ impl Bot {
 
             let task = match message {
                 Some(ServerMessage::Privmsg(msg)) => {
-                    if msg.message_text.contains("hi") && msg.message_text.contains("@oxoboxowot") {
-                        info!(id = %msg.message_id, ?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+                    let meta = Metadata { id: msg.message_id };
+
+                    if let Some(tail) = msg.message_text.strip_prefix(prefix) {
+                        if let Some(tail) = tail.trim().strip_prefix("addcommand") {
+                            if let Some((trigger, response)) = tail.trim().split_once(" ") {
+                                info!(id = %meta.id, ?trigger, ?response, "adding command");
+
+                                Some(WithMeta(
+                                    Task::BuiltIn(BuiltInCommand::AddCommand {
+                                        channel: msg.channel_login.to_owned(),
+                                        trigger: trigger.to_owned(),
+                                        response: response.to_owned(),
+                                    }),
+                                    meta,
+                                ))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else if msg.message_text.contains("hi")
+                        && msg.message_text.contains("@oxoboxowot")
+                    {
+                        info!(id = %meta.id, ?msg.channel_login, ?msg.sender.login, ?msg.message_text);
 
                         Some(WithMeta(
                             Task::Implicit(ImplicitTask::Greet {
                                 channel: msg.channel_login,
                                 user: msg.sender.login,
                             }),
-                            Metadata { id: msg.message_id },
+                            meta,
                         ))
                     } else {
                         None
@@ -141,11 +179,12 @@ impl Bot {
 
     /// Loops over incoming [`Task`]s, acts on them, and if necessary, sends a
     /// [`Response`] in `res_tx` with the appropriate response to send.
-    #[instrument(skip(task_rx, res_tx, _pool))]
+    #[instrument(skip(task_rx, res_tx, pool, prefix))]
     async fn process(
         mut task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
         res_tx: broadcast::Sender<WithMeta<Response>>,
-        _pool: Pool<SqliteConnectionManager>,
+        pool: Pool<SqliteConnectionManager>,
+        prefix: char,
     ) {
         loop {
             let task = task_rx
@@ -154,6 +193,14 @@ impl Bot {
                 .tap_none(|| error!("failed to receive task message"));
 
             let response = match task {
+                Some(WithMeta(
+                    Task::Command {
+                        channel: _,
+                        sender: _,
+                        command: _,
+                    },
+                    _meta,
+                )) => None,
                 Some(WithMeta(Task::Implicit(ImplicitTask::Greet { channel, user }), meta)) => {
                     info!(id = %meta.id, ?channel, ?user, "implicit greet task");
 
@@ -165,7 +212,35 @@ impl Bot {
                         meta,
                     ))
                 }
-                Some(_) => None,
+                Some(WithMeta(
+                    Task::BuiltIn(BuiltInCommand::AddCommand {
+                        channel,
+                        trigger,
+                        response,
+                    }),
+                    meta,
+                )) => {
+                    info!(id = %meta.id, ?trigger, ?response, "add command task");
+
+                    let conn = pool.get().expect("pool should provide a connection");
+
+                    conn.execute(
+                        r#"
+                        INSERT INTO commands (channel, trigger, response)
+                        VALUES (?1, ?2, ?3);
+                        "#,
+                        params![channel, trigger, response],
+                    )
+                    .expect("database execution should succeed");
+
+                    Some(WithMeta(
+                        Response::Say {
+                            channel,
+                            message: format!("Added {}{}", prefix, trigger),
+                        },
+                        meta,
+                    ))
+                }
                 None => None,
             };
 
@@ -238,10 +313,16 @@ impl Bot {
 #[derive(Debug, Error)]
 pub enum BotError {
     #[error("migration error: {0}")]
-    Migration(#[source] refinery::Error),
+    Migration(#[from] refinery::Error),
 
     #[error("authentication error: {0}")]
     Auth(#[from] crate::auth::AuthError),
+
+    #[error("rusqlite error: {0}")]
+    Rusqlite(#[from] rusqlite::Error),
+
+    #[error("r2d2 error: {0}")]
+    R2d2(#[from] r2d2::Error),
 }
 
 /// The number one single when Twitch user @NinthRoads was born was Bob The
@@ -256,6 +337,7 @@ pub struct BotBuilder {
     twitch_name: Option<String>,
     channels: Option<Vec<String>>,
     db_path: Option<PathBuf>,
+    prefix: Option<char>,
 }
 
 impl BotBuilder {
@@ -298,6 +380,12 @@ impl BotBuilder {
         self
     }
 
+    /// Set the prefix that commands start with.
+    pub fn prefix(mut self, prefix: char) -> Self {
+        self.prefix = Some(prefix);
+        self
+    }
+
     /// Set the bot to attempt to open the SQLite3 database at `path` and use
     /// that as its database, instead of using an in-memory database.
     pub fn db_path<P: AsRef<Path>>(mut self, path: P) -> Self {
@@ -311,22 +399,12 @@ impl BotBuilder {
         let client_secret = self.client_secret.ok_or(BotBuildError::NoClientSecret)?;
         let twitch_name = self.twitch_name.ok_or(BotBuildError::NoTwitchName)?;
         let channels = self.channels.ok_or(BotBuildError::NoChannels)?;
+        let prefix = self.prefix.ok_or(BotBuildError::NoPrefix)?;
 
-        let manager = self
-            .db_path
-            .map_or_else(
-                SqliteConnectionManager::memory,
-                SqliteConnectionManager::file,
-            )
-            .with_init(|conn| {
-                let report = crate::db::migrations::runner()
-                    .run(conn)
-                    .expect("running migrations should succeed");
-
-                debug!(?report);
-
-                Ok(())
-            });
+        let manager = self.db_path.map_or_else(
+            SqliteConnectionManager::memory,
+            SqliteConnectionManager::file,
+        );
 
         let conn_pool = Pool::new(manager)?;
 
@@ -335,6 +413,7 @@ impl BotBuilder {
             client_secret,
             twitch_name,
             channels,
+            prefix,
             conn_pool,
         })
     }
@@ -351,11 +430,11 @@ pub enum BotBuildError {
     #[error("no twitch name provided")]
     NoTwitchName,
 
-    #[error("no channels to join specified")]
+    #[error("no channels to join provided")]
     NoChannels,
 
-    #[error("no information about a database specified")]
-    NoDbInfo,
+    #[error("no prefix provided")]
+    NoPrefix,
 
     #[error("rusqlite error: {0}")]
     Rusqlite(#[from] rusqlite::Error),
