@@ -4,7 +4,7 @@ use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc::UnboundedReceiver};
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, info, instrument};
 use twitch_irc::{
     login::{LoginCredentials, RefreshingLoginCredentials},
@@ -12,7 +12,10 @@ use twitch_irc::{
     ClientConfig, TCPTransport, Transport, TwitchIRCClient,
 };
 
-use crate::{auth::SQLiteTokenStore, msg::Message};
+use crate::{
+    auth::SQLiteTokenStore,
+    msg::{ImplicitTask, Response, Task},
+};
 
 /// The main `oxbow` bot entry point.
 pub struct Bot {
@@ -55,44 +58,89 @@ impl Bot {
             RefreshingLoginCredentials<SQLiteTokenStore>,
         >::new(config);
 
-        let (tx, _rx) = broadcast::channel::<Message>(16);
-        let tx1 = tx.clone();
+        // Channel for the receive loop to trigger tasks in the process loop.
+        let (task_tx, task_rx) = mpsc::unbounded_channel();
 
-        let receive_loop = tokio::spawn(Self::receive(incoming_messages, tx1));
+        // Channel for the process loop to trigger responses in the response
+        // loops.
+        let (res_tx, _) = broadcast::channel(16);
 
+        // Spawn a receive loop to interpret incoming messages and turn them
+        // into Tasks if necessary.
+        let receive_loop = tokio::spawn(Self::receive(incoming_messages, task_tx.clone()));
+
+        // Spawn a processing loop to interpret Tasks and turn them into
+        // Responses if necessary.
+        let process_loop = tokio::spawn(Self::process(
+            task_rx,
+            res_tx.clone(),
+            self.conn_pool.clone(),
+        ));
+
+        // For every channel, we need a response loop to perform Responses if
+        // they're relevant to that channel.
         for channel in self.channels.iter() {
             tokio::spawn(Self::respond(
                 client.clone(),
                 channel.to_owned(),
-                tx.subscribe(),
+                res_tx.subscribe(),
             ));
         }
 
         receive_loop.await.unwrap();
+        process_loop.await.unwrap();
 
         Ok(())
     }
 
     /// Loops over incoming messages and if any are a recognised command, sends
-    /// a message in `msg_tx` with the appropriate action to take.
-    #[instrument(skip(incoming, msg_tx))]
+    /// a [`Task`] in `task_tx` with the appropriate task to perform.
+    #[instrument(skip(incoming, task_tx))]
     async fn receive(
-        mut incoming: UnboundedReceiver<ServerMessage>,
-        msg_tx: broadcast::Sender<Message>,
+        mut incoming: mpsc::UnboundedReceiver<ServerMessage>,
+        task_tx: mpsc::UnboundedSender<Task>,
     ) {
         while let Some(message) = incoming.recv().await {
             match message {
                 ServerMessage::Privmsg(msg) => {
-                    if &*msg.message_text == "hi @oxoboxowot" {
+                    if msg.message_text.contains("hi") && msg.message_text.contains("@oxoboxowot") {
                         info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
 
-                        msg_tx
-                            .send(Message::Response {
-                                channel: msg.channel_login.clone(),
-                                message: format!("uwu @{} *nuzzles you*", msg.sender.login),
-                            })
-                            .expect("sending messages should succeed");
+                        task_tx
+                            .send(Task::Implicit(ImplicitTask::Greet {
+                                channel: msg.channel_login,
+                                user: msg.sender.login,
+                            }))
+                            .expect("sending tasks should succeed");
                     }
+                }
+                _ => (),
+            }
+        }
+    }
+
+    /// Loops over incoming [`Task`]s, acts on them, and if necessary, sends a
+    /// [`Response`] in `res_tx` with the appropriate response to send.
+    #[instrument(skip(task_rx, res_tx, _pool))]
+    async fn process(
+        mut task_rx: mpsc::UnboundedReceiver<Task>,
+        res_tx: broadcast::Sender<Response>,
+        _pool: Pool<SqliteConnectionManager>,
+    ) {
+        loop {
+            let task = task_rx
+                .recv()
+                .await
+                .expect("receiving tasks should succeed");
+
+            match task {
+                Task::Implicit(ImplicitTask::Greet { channel, user }) => {
+                    res_tx
+                        .send(Response::Say {
+                            channel,
+                            message: format!("uwu *nuzzles @{}*", user),
+                        })
+                        .expect("sending messages should succeed");
                 }
                 _ => (),
             }
@@ -101,11 +149,11 @@ impl Bot {
 
     /// Watches for relevant messages coming in through `msg_rx` and acts on
     /// them in `channel`, such as sending responses.
-    #[instrument(skip(client, msg_rx))]
+    #[instrument(skip(client, res_rx))]
     async fn respond<T, L>(
         client: TwitchIRCClient<T, L>,
         channel: String,
-        mut msg_rx: broadcast::Receiver<Message>,
+        mut res_rx: broadcast::Receiver<Response>,
     ) where
         T: Transport,
         L: LoginCredentials,
@@ -119,13 +167,13 @@ impl Bot {
         info!("joined channel");
 
         loop {
-            let msg = msg_rx
+            let res = res_rx
                 .recv()
                 .await
-                .expect("receiving messages should succeed");
+                .expect("receiving responses should succeed");
 
-            match msg {
-                Message::Response {
+            match res {
+                Response::Say {
                     channel: msg_channel,
                     message,
                 } if msg_channel == channel => {
