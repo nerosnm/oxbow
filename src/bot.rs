@@ -4,13 +4,14 @@ use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
+use tokio::sync::broadcast;
 use tracing::{debug, info, info_span, span, Instrument, Level};
 use twitch_irc::{
     login::RefreshingLoginCredentials, message::ServerMessage, ClientConfig, TCPTransport,
     TwitchIRCClient,
 };
 
-use crate::auth::SQLiteTokenStore;
+use crate::{auth::SQLiteTokenStore, msg::Message};
 
 /// The main `oxbow` bot entry point.
 pub struct Bot {
@@ -53,23 +54,35 @@ impl Bot {
             RefreshingLoginCredentials<SQLiteTokenStore>,
         >::new(config);
 
+        let (tx, _rx) = broadcast::channel::<Message>(16);
+        let tx1 = tx.clone();
+
         let receive_loop = tokio::spawn(
             async move {
                 while let Some(message) = incoming_messages.recv().await {
                     match message {
                         ServerMessage::Privmsg(msg) => {
-                            info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+                            if &*msg.message_text == "hi @oxoboxowot" {
+                                info!(?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+
+                                tx1.send(Message::Response {
+                                    channel: msg.channel_login.clone(),
+                                    message: format!("uwu @{} *nuzzles you*", msg.sender.login),
+                                })
+                                .expect("sending messages should succeed");
+                            }
                         }
                         _ => (),
                     }
                 }
             }
-            .instrument(info_span!("receive_loop")),
+            .instrument(info_span!("receive")),
         );
 
         for channel in self.channels.iter() {
             let client = client.clone();
             let ch = channel.to_owned();
+            let mut rx = tx.subscribe();
 
             tokio::spawn(
                 async move {
@@ -81,13 +94,23 @@ impl Bot {
 
                     info!("joined channel");
 
-                    info!("sending greeting");
-                    client
-                        .say(ch.clone(), "uwu".to_owned())
-                        .await
-                        .expect("unable to send greeting");
+                    loop {
+                        let msg = rx.recv().await.expect("receiving messages should succeed");
+
+                        match msg {
+                            Message::Response { channel, message } if channel == ch => {
+                                info!(response.channel = ?channel, response.message = ?message, "sending response");
+
+                                client
+                                    .say(channel, message)
+                                    .await
+                                    .expect("unable to send response");
+                            }
+                            _ => (),
+                        }
+                    }
                 }
-                .instrument(span!(Level::INFO, "greeting", ?channel)),
+                .instrument(span!(Level::INFO, "respond", ?channel)),
             );
         }
 
