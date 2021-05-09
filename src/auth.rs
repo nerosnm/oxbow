@@ -217,9 +217,10 @@ pub enum StoreError {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::DerefMut;
+
     use chrono::Duration;
     use tempfile::{tempdir, TempDir};
-    use tracing::info;
     use twitch_irc::login::TokenStorage;
 
     use super::*;
@@ -228,17 +229,15 @@ mod tests {
         let db_dir = tempdir().expect("creating a temporary directory should succeed");
         let db_path = db_dir.path().join("db.sqlite3");
 
-        let manager = SqliteConnectionManager::file(&db_path).with_init(|conn| {
-            let report = crate::db::migrations::runner()
-                .run(conn)
-                .expect("running migrations should succeed");
-
-            info!(?report);
-
-            Ok(())
-        });
-
+        let manager = SqliteConnectionManager::file(&db_path);
         let conn_pool = Pool::new(manager).expect("creating a connection pool should succeed");
+
+        let mut conn = conn_pool
+            .get()
+            .expect("getting a connection from the pool should succeed");
+        crate::db::migrations::runner()
+            .run(conn.deref_mut())
+            .expect("running migrations should succeed");
 
         (db_dir, SQLiteTokenStore { conn_pool })
     }
