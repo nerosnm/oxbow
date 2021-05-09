@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, Connection};
+use rusqlite::params;
 use thiserror::Error;
 use twitch_api2::twitch_oauth2::{scopes::Scope, TwitchToken};
 use twitch_irc::login::{TokenStorage, UserAccessToken};

@@ -1,12 +1,9 @@
 use std::env;
 
 use eyre::{Result, WrapErr};
-use oxbow::{auth::SQLiteTokenStore, Bot};
-use rusqlite::Connection;
+use oxbow::Bot;
 use surf::Client as SurfClient;
-use tracing::info;
 use twitch_api2::TwitchClient;
-use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
 #[tokio::main]
 async fn main() -> Result<()> {

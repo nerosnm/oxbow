@@ -1,13 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use eyre::{Result, WrapErr};
+use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
-use surf::Client as SurfClient;
 use thiserror::Error;
 use tracing::info;
-use twitch_api2::TwitchClient;
 use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
 use crate::auth::SQLiteTokenStore;
