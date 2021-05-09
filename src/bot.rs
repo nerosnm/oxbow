@@ -51,12 +51,12 @@ impl Bot {
     /// Spawns tasks to receive messages, and to send messages to each connected
     /// channel.
     pub async fn run(&mut self) -> Result<(), BotError> {
-        let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
-        let _ = crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
-
         let mut conn = self.conn_pool.get()?;
         let report = crate::db::migrations::runner().run(conn.deref_mut())?;
         debug!(?report);
+
+        let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
+        let _ = crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
 
         let creds = RefreshingLoginCredentials::new(
             self.twitch_name.clone(),
