@@ -26,25 +26,33 @@ impl WordSearch {
         &self.possible[mid]
     }
 
-    pub fn set_lower(&mut self, word: &str, distance: usize) {
+    pub fn set_lower(&mut self, word: &str, distance: Option<usize>) {
         if let Some(index) = self.possible.iter().position(|ea| *ea == word) {
             let sliced = self.possible[(index + 1)..].to_vec();
 
-            self.possible = sliced
-                .into_iter()
-                .filter(|ea| Self::hamming_distance(word, ea) == distance)
-                .collect();
+            if let Some(distance) = distance {
+                self.possible = sliced
+                    .into_iter()
+                    .filter(|ea| Self::hamming_distance(word, ea) == distance)
+                    .collect();
+            } else {
+                self.possible = sliced;
+            }
         }
     }
 
-    pub fn set_upper(&mut self, word: &str, distance: usize) {
+    pub fn set_upper(&mut self, word: &str, distance: Option<usize>) {
         if let Some(index) = self.possible.iter().position(|ea| *ea == word) {
             let sliced = self.possible[..index].to_vec();
 
-            self.possible = sliced
-                .into_iter()
-                .filter(|ea| Self::hamming_distance(word, ea) == distance)
-                .collect();
+            if let Some(distance) = distance {
+                self.possible = sliced
+                    .into_iter()
+                    .filter(|ea| Self::hamming_distance(word, ea) == distance)
+                    .collect();
+            } else {
+                self.possible = sliced;
+            }
         }
     }
 

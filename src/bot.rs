@@ -207,20 +207,17 @@ impl ReceiveHandler {
 
                                 if msg.sender.login == "nerosnm" {
                                     if let Some(word) = components.next() {
-                                        if let Some(distance) =
-                                            components.next().and_then(|d| d.parse().ok())
-                                        {
-                                            Some(WithMeta(
-                                                Task::BuiltIn(BuiltInCommand::WordLower {
-                                                    channel: msg.channel_login.to_owned(),
-                                                    word: word.to_owned(),
-                                                    distance,
-                                                }),
-                                                meta,
-                                            ))
-                                        } else {
-                                            None
-                                        }
+                                        let distance =
+                                            components.next().and_then(|d| d.parse().ok());
+
+                                        Some(WithMeta(
+                                            Task::BuiltIn(BuiltInCommand::WordLower {
+                                                channel: msg.channel_login.to_owned(),
+                                                word: word.to_owned(),
+                                                distance,
+                                            }),
+                                            meta,
+                                        ))
                                     } else {
                                         None
                                     }
@@ -234,20 +231,17 @@ impl ReceiveHandler {
 
                                 if msg.sender.login == "nerosnm" {
                                     if let Some(word) = components.next() {
-                                        if let Some(distance) =
-                                            components.next().and_then(|d| d.parse().ok())
-                                        {
-                                            Some(WithMeta(
-                                                Task::BuiltIn(BuiltInCommand::WordUpper {
-                                                    channel: msg.channel_login.to_owned(),
-                                                    word: word.to_owned(),
-                                                    distance,
-                                                }),
-                                                meta,
-                                            ))
-                                        } else {
-                                            None
-                                        }
+                                        let distance =
+                                            components.next().and_then(|d| d.parse().ok());
+
+                                        Some(WithMeta(
+                                            Task::BuiltIn(BuiltInCommand::WordUpper {
+                                                channel: msg.channel_login.to_owned(),
+                                                word: word.to_owned(),
+                                                distance,
+                                            }),
+                                            meta,
+                                        ))
                                     } else {
                                         None
                                     }

@@ -63,13 +63,13 @@ pub enum BuiltInCommand {
     WordLower {
         channel: String,
         word: String,
-        distance: usize,
+        distance: Option<usize>,
     },
     /// Set the upper bound after a guess.
     WordUpper {
         channel: String,
         word: String,
-        distance: usize,
+        distance: Option<usize>,
     },
     /// End a word search run.
     WordFound { channel: String },
