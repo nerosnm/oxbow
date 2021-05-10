@@ -1423,6 +1423,7 @@ dependencies = [
  "clap",
  "dotenv",
  "eyre",
+ "lazy_static",
  "r2d2",
  "r2d2_sqlite",
  "refinery",

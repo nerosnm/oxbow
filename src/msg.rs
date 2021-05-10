@@ -57,6 +57,14 @@ pub enum BuiltInCommand {
         /// The response that should be sent in a message.
         response: String,
     },
+    /// Start a word search run.
+    WordSearch { channel: String },
+    /// Set the lower bound after a guess.
+    WordLower { channel: String, word: String },
+    /// Set the upper bound after a guess.
+    WordUpper { channel: String, word: String },
+    /// End a word search run.
+    WordFound { channel: String },
 }
 
 /// Commands to respond in some way to an action, such as by replying with a

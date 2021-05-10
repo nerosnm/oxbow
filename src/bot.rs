@@ -23,6 +23,7 @@ use crate::{
     auth::SQLiteTokenStore,
     commands::CommandsStore,
     msg::{BuiltInCommand, ImplicitTask, Metadata, Response, Task, WithMeta},
+    wordsearch::WordSearch,
 };
 
 /// The main `oxbow` bot entry point.
@@ -98,6 +99,7 @@ impl Bot {
                 res_tx,
                 commands,
                 prefix,
+                word_search: WordSearch::new(),
             };
 
             handler.process().await;
@@ -184,6 +186,77 @@ impl ReceiveHandler {
                                     None
                                 }
                             }
+
+                            "search" => {
+                                debug!(id = %meta.id, command = "search", "identified command");
+
+                                if msg.sender.login == "nerosnm" {
+                                    Some(WithMeta(
+                                        Task::BuiltIn(BuiltInCommand::WordSearch {
+                                            channel: msg.channel_login.to_owned(),
+                                        }),
+                                        meta,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            }
+
+                            "lower" => {
+                                debug!(id = %meta.id, command = "lower", "identified command");
+
+                                if msg.sender.login == "nerosnm" {
+                                    if let Some(word) = components.next() {
+                                        Some(WithMeta(
+                                            Task::BuiltIn(BuiltInCommand::WordLower {
+                                                channel: msg.channel_login.to_owned(),
+                                                word: word.to_owned(),
+                                            }),
+                                            meta,
+                                        ))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+
+                            "upper" => {
+                                debug!(id = %meta.id, command = "upper", "identified command");
+
+                                if msg.sender.login == "nerosnm" {
+                                    if let Some(word) = components.next() {
+                                        Some(WithMeta(
+                                            Task::BuiltIn(BuiltInCommand::WordUpper {
+                                                channel: msg.channel_login.to_owned(),
+                                                word: word.to_owned(),
+                                            }),
+                                            meta,
+                                        ))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+
+                            "found" => {
+                                debug!(id = %meta.id, command = "found", "identified command");
+
+                                if msg.sender.login == "nerosnm" {
+                                    Some(WithMeta(
+                                        Task::BuiltIn(BuiltInCommand::WordFound {
+                                            channel: msg.channel_login.to_owned(),
+                                        }),
+                                        meta,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            }
+
                             other => Some(WithMeta(
                                 Task::Command {
                                     channel: msg.channel_login.to_owned(),
@@ -235,6 +308,7 @@ struct ProcessHandler {
     res_tx: broadcast::Sender<WithMeta<Response>>,
     commands: CommandsStore,
     prefix: char,
+    word_search: WordSearch,
 }
 
 impl ProcessHandler {
@@ -313,6 +387,62 @@ impl ProcessHandler {
                         Response::Say {
                             channel,
                             message: format!("{} {}{}", verb, self.prefix, trigger),
+                        },
+                        meta,
+                    ))
+                }
+                Some(WithMeta(Task::BuiltIn(BuiltInCommand::WordSearch { channel }), meta)) => {
+                    info!(id = %meta.id, "word search task");
+
+                    self.word_search.reset();
+
+                    Some(WithMeta(
+                        Response::Say {
+                            channel,
+                            message: format!("!wg {}", self.word_search.guess()),
+                        },
+                        meta,
+                    ))
+                }
+                Some(WithMeta(
+                    Task::BuiltIn(BuiltInCommand::WordLower { channel, word }),
+                    meta,
+                )) => {
+                    info!(id = %meta.id, ?word, "word lower task");
+
+                    self.word_search.set_lower(&word);
+
+                    Some(WithMeta(
+                        Response::Say {
+                            channel,
+                            message: format!("!wg {}", self.word_search.guess()),
+                        },
+                        meta,
+                    ))
+                }
+                Some(WithMeta(
+                    Task::BuiltIn(BuiltInCommand::WordUpper { channel, word }),
+                    meta,
+                )) => {
+                    info!(id = %meta.id, ?word, "word upper task");
+
+                    self.word_search.set_upper(&word);
+
+                    Some(WithMeta(
+                        Response::Say {
+                            channel,
+                            message: format!("!wg {}", self.word_search.guess()),
+                        },
+                        meta,
+                    ))
+                }
+                Some(WithMeta(Task::BuiltIn(BuiltInCommand::WordFound { channel }), meta)) => {
+                    info!(id = %meta.id, "word found task");
+
+                    Some(WithMeta(
+                        Response::Say {
+                            channel,
+                            message: format!("Word search stopped"),
                         },
                         meta,
                     ))
