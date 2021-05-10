@@ -60,9 +60,17 @@ pub enum BuiltInCommand {
     /// Start a word search run.
     WordSearch { channel: String },
     /// Set the lower bound after a guess.
-    WordLower { channel: String, word: String },
+    WordLower {
+        channel: String,
+        word: String,
+        distance: usize,
+    },
     /// Set the upper bound after a guess.
-    WordUpper { channel: String, word: String },
+    WordUpper {
+        channel: String,
+        word: String,
+        distance: usize,
+    },
     /// End a word search run.
     WordFound { channel: String },
 }

@@ -207,13 +207,20 @@ impl ReceiveHandler {
 
                                 if msg.sender.login == "nerosnm" {
                                     if let Some(word) = components.next() {
-                                        Some(WithMeta(
-                                            Task::BuiltIn(BuiltInCommand::WordLower {
-                                                channel: msg.channel_login.to_owned(),
-                                                word: word.to_owned(),
-                                            }),
-                                            meta,
-                                        ))
+                                        if let Some(distance) =
+                                            components.next().and_then(|d| d.parse().ok())
+                                        {
+                                            Some(WithMeta(
+                                                Task::BuiltIn(BuiltInCommand::WordLower {
+                                                    channel: msg.channel_login.to_owned(),
+                                                    word: word.to_owned(),
+                                                    distance,
+                                                }),
+                                                meta,
+                                            ))
+                                        } else {
+                                            None
+                                        }
                                     } else {
                                         None
                                     }
@@ -227,13 +234,20 @@ impl ReceiveHandler {
 
                                 if msg.sender.login == "nerosnm" {
                                     if let Some(word) = components.next() {
-                                        Some(WithMeta(
-                                            Task::BuiltIn(BuiltInCommand::WordUpper {
-                                                channel: msg.channel_login.to_owned(),
-                                                word: word.to_owned(),
-                                            }),
-                                            meta,
-                                        ))
+                                        if let Some(distance) =
+                                            components.next().and_then(|d| d.parse().ok())
+                                        {
+                                            Some(WithMeta(
+                                                Task::BuiltIn(BuiltInCommand::WordUpper {
+                                                    channel: msg.channel_login.to_owned(),
+                                                    word: word.to_owned(),
+                                                    distance,
+                                                }),
+                                                meta,
+                                            ))
+                                        } else {
+                                            None
+                                        }
                                     } else {
                                         None
                                     }
@@ -405,12 +419,16 @@ impl ProcessHandler {
                     ))
                 }
                 Some(WithMeta(
-                    Task::BuiltIn(BuiltInCommand::WordLower { channel, word }),
+                    Task::BuiltIn(BuiltInCommand::WordLower {
+                        channel,
+                        word,
+                        distance,
+                    }),
                     meta,
                 )) => {
                     info!(id = %meta.id, ?word, "word lower task");
 
-                    self.word_search.set_lower(&word);
+                    self.word_search.set_lower(&word, distance);
 
                     Some(WithMeta(
                         Response::Say {
@@ -421,12 +439,16 @@ impl ProcessHandler {
                     ))
                 }
                 Some(WithMeta(
-                    Task::BuiltIn(BuiltInCommand::WordUpper { channel, word }),
+                    Task::BuiltIn(BuiltInCommand::WordUpper {
+                        channel,
+                        word,
+                        distance,
+                    }),
                     meta,
                 )) => {
                     info!(id = %meta.id, ?word, "word upper task");
 
-                    self.word_search.set_upper(&word);
+                    self.word_search.set_upper(&word, distance);
 
                     Some(WithMeta(
                         Response::Say {
