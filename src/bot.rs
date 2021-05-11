@@ -265,14 +265,21 @@ impl Bot {
                 )) => {
                     info!(id = %meta.id, ?trigger, ?response, "add command task");
 
+                    let already_exists = commands
+                        .get_command(&channel, &trigger)
+                        .expect("getting a command should succeed")
+                        .is_some();
+
                     commands
                         .set_command(&channel, &trigger, &response)
                         .expect("setting a command should succeed");
 
+                    let verb = if already_exists { "Updated" } else { "Added" };
+
                     Some(WithMeta(
                         Response::Say {
                             channel,
-                            message: format!("Added {}{}", prefix, trigger),
+                            message: format!("{} {}{}", verb, prefix, trigger),
                         },
                         meta,
                     ))
