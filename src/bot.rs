@@ -65,42 +65,60 @@ impl Bot {
             store,
         );
         let config = ClientConfig::new_simple(creds);
-        let (incoming_messages, client) = TwitchIRCClient::<TCPTransport, _>::new(config);
-
-        let commands = CommandsStore::new(self.conn_pool.clone());
+        let (msg_rx, client) = TwitchIRCClient::<TCPTransport, _>::new(config);
 
         // Channel for the receive loop to trigger tasks in the process loop.
         let (task_tx, task_rx) = mpsc::unbounded_channel();
 
         // Channel for the process loop to trigger responses in the response
         // loops.
-        let (res_tx, _) = broadcast::channel(16);
+        let (res_tx_orig, _) = broadcast::channel(16);
 
         // Spawn a receive loop to interpret incoming messages and turn them
         // into Tasks if necessary.
-        let receive_loop = tokio::spawn(Self::receive(
-            incoming_messages,
-            task_tx.clone(),
-            self.prefix,
-        ));
+        let prefix = self.prefix;
+        let receive_loop = tokio::spawn(async move {
+            let mut handler = ReceiveHandler {
+                msg_rx,
+                task_tx,
+                prefix,
+            };
+
+            handler.receive().await;
+        });
 
         // Spawn a processing loop to interpret Tasks and turn them into
         // Responses if necessary.
-        let process_loop = tokio::spawn(Self::process(
-            task_rx,
-            res_tx.clone(),
-            self.prefix,
-            commands,
-        ));
+        let res_tx = res_tx_orig.clone();
+        let commands = CommandsStore::new(self.conn_pool.clone());
+        let prefix = self.prefix;
+        let process_loop = tokio::spawn(async move {
+            let mut handler = ProcessHandler {
+                task_rx,
+                res_tx,
+                commands,
+                prefix,
+            };
+
+            handler.process().await;
+        });
 
         // For every channel, we need a response loop to perform Responses if
         // they're relevant to that channel.
         for channel in self.channels.iter() {
-            tokio::spawn(Self::respond(
-                client.clone(),
-                channel.to_owned(),
-                res_tx.subscribe(),
-            ));
+            let res_rx = res_tx_orig.subscribe();
+            let client = client.clone();
+            let channel = channel.to_owned();
+
+            tokio::spawn(async move {
+                let mut handler = RespondHandler {
+                    res_rx,
+                    client,
+                    channel,
+                };
+
+                handler.respond().await;
+            });
         }
 
         receive_loop.await.unwrap();
@@ -108,21 +126,26 @@ impl Bot {
 
         Ok(())
     }
+}
 
+struct ReceiveHandler {
+    msg_rx: mpsc::UnboundedReceiver<ServerMessage>,
+    task_tx: mpsc::UnboundedSender<WithMeta<Task>>,
+    prefix: char,
+}
+
+impl ReceiveHandler {
     /// Loops over incoming messages and if any are a recognised command, sends
     /// a [`Task`] in `task_tx` with the appropriate task to perform.
-    #[instrument(skip(incoming, task_tx, prefix))]
-    async fn receive(
-        mut incoming: mpsc::UnboundedReceiver<ServerMessage>,
-        task_tx: mpsc::UnboundedSender<WithMeta<Task>>,
-        prefix: char,
-    ) {
+    #[instrument(skip(self))]
+    async fn receive(&mut self) {
         debug!("starting");
 
         loop {
             trace!("waiting for incoming message");
 
-            let message = incoming
+            let message = self
+                .msg_rx
                 .recv()
                 .await
                 .tap_some(|_| trace!("received incoming message"))
@@ -133,7 +156,9 @@ impl Bot {
                     let meta = Metadata { id: msg.message_id };
                     let mut components = msg.message_text.split(" ");
 
-                    if let Some(command) = components.next().and_then(|c| c.strip_prefix(prefix)) {
+                    if let Some(command) =
+                        components.next().and_then(|c| c.strip_prefix(self.prefix))
+                    {
                         match command {
                             "command" => {
                                 debug!(id = %meta.id, command = "command", "identified command");
@@ -196,28 +221,34 @@ impl Bot {
 
             if let Some(WithMeta(task, meta)) = task {
                 let id = meta.id.clone();
-                let _ = task_tx
+                let _ = self
+                    .task_tx
                     .send(WithMeta(task, meta))
                     .tap_err(|e| error!(%id, error = ?e, "failed to send task message"));
             }
         }
     }
+}
 
+struct ProcessHandler {
+    task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
+    res_tx: broadcast::Sender<WithMeta<Response>>,
+    commands: CommandsStore,
+    prefix: char,
+}
+
+impl ProcessHandler {
     /// Loops over incoming [`Task`]s, acts on them, and if necessary, sends a
     /// [`Response`] in `res_tx` with the appropriate response to send.
-    #[instrument(skip(task_rx, res_tx, prefix, commands))]
-    async fn process(
-        mut task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
-        res_tx: broadcast::Sender<WithMeta<Response>>,
-        prefix: char,
-        commands: CommandsStore,
-    ) {
+    #[instrument(skip(self))]
+    async fn process(&mut self) {
         debug!("starting");
 
         loop {
             trace!("waiting for task message");
 
-            let task = task_rx
+            let task = self
+                .task_rx
                 .recv()
                 .await
                 .tap_some(|_| trace!("received task message"))
@@ -232,7 +263,8 @@ impl Bot {
                         body: _,
                     },
                     meta,
-                )) => commands
+                )) => self
+                    .commands
                     .get_command(&channel, &command)
                     .expect("getting a command should succeed")
                     .map(|response| {
@@ -265,12 +297,13 @@ impl Bot {
                 )) => {
                     info!(id = %meta.id, ?trigger, ?response, "add command task");
 
-                    let already_exists = commands
+                    let already_exists = self
+                        .commands
                         .get_command(&channel, &trigger)
                         .expect("getting a command should succeed")
                         .is_some();
 
-                    commands
+                    self.commands
                         .set_command(&channel, &trigger, &response)
                         .expect("setting a command should succeed");
 
@@ -279,7 +312,7 @@ impl Bot {
                     Some(WithMeta(
                         Response::Say {
                             channel,
-                            message: format!("{} {}{}", verb, prefix, trigger),
+                            message: format!("{} {}{}", verb, self.prefix, trigger),
                         },
                         meta,
                     ))
@@ -289,29 +322,39 @@ impl Bot {
 
             if let Some(WithMeta(res, meta)) = response {
                 let id = meta.id.clone();
-                let _ = res_tx
+                let _ = self
+                    .res_tx
                     .send(WithMeta(res, meta))
                     .tap_err(|e| error!(%id, error = ?e, "failed to send response message"));
             }
         }
     }
+}
 
+struct RespondHandler<T, L>
+where
+    T: Transport,
+    L: LoginCredentials,
+{
+    res_rx: broadcast::Receiver<WithMeta<Response>>,
+    client: TwitchIRCClient<T, L>,
+    channel: String,
+}
+
+impl<T, L> RespondHandler<T, L>
+where
+    T: Transport,
+    L: LoginCredentials,
+{
     /// Watches for relevant messages coming in through `msg_rx` and acts on
     /// them in `channel`, such as sending responses.
-    #[instrument(skip(client, res_rx))]
-    async fn respond<T, L>(
-        client: TwitchIRCClient<T, L>,
-        channel: String,
-        mut res_rx: broadcast::Receiver<WithMeta<Response>>,
-    ) where
-        T: Transport,
-        L: LoginCredentials,
-    {
+    #[instrument(skip(self))]
+    async fn respond(&mut self) {
         debug!("starting");
 
-        client.join(channel.clone());
+        self.client.join(self.channel.clone());
 
-        while client.get_channel_status(channel.clone()).await != (true, true) {
+        while self.client.get_channel_status(self.channel.clone()).await != (true, true) {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
@@ -320,7 +363,8 @@ impl Bot {
         loop {
             trace!("waiting for response message");
 
-            let res = res_rx
+            let res = self
+                .res_rx
                 .recv()
                 .await
                 .tap_ok(|_| trace!("received response message"))
@@ -333,7 +377,7 @@ impl Bot {
                         message,
                     },
                     meta,
-                )) if msg_channel == channel => {
+                )) if msg_channel == self.channel => {
                     info!(id = %meta.id, response.channel = ?msg_channel, response.message = ?message, "sending response");
 
                     Some(WithMeta((msg_channel, message), meta))
@@ -349,7 +393,8 @@ impl Bot {
             };
 
             if let Some(WithMeta((channel, message), meta)) = response {
-                let _ = client
+                let _ = self
+                    .client
                     .say(channel, message)
                     .await
                     .tap_err(|e| error!(id = %meta.id, error = ?e, "unable to send response"));
