@@ -4,7 +4,7 @@ use rusqlite::params;
 use thiserror::Error;
 
 /// Storage of custom commands in an SQLite3 database.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommandsStore {
     conn_pool: Pool<SqliteConnectionManager>,
 }
@@ -16,7 +16,7 @@ impl CommandsStore {
     }
 
     pub fn set_command(
-        &mut self,
+        &self,
         channel: &str,
         trigger: &str,
         response: &str,
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn set_command() {
-        let (_db_dir, mut commands) = storage();
+        let (_db_dir, commands) = storage();
 
         let response = commands
             .get_command("asdf", "command")
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn update_command() {
-        let (_db_dir, mut commands) = storage();
+        let (_db_dir, commands) = storage();
 
         commands
             .set_command(

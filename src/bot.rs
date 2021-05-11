@@ -131,30 +131,50 @@ impl Bot {
             let task = match message {
                 Some(ServerMessage::Privmsg(msg)) => {
                     let meta = Metadata { id: msg.message_id };
+                    let mut components = msg.message_text.split(" ");
 
-                    if let Some(tail) = msg.message_text.strip_prefix(prefix) {
-                        if let Some(tail) = tail.trim().strip_prefix("command") {
-                            debug!(id = %meta.id, command = "command", "identified command");
+                    if let Some(command) = components.next().and_then(|c| c.strip_prefix(prefix)) {
+                        match command {
+                            "command" => {
+                                debug!(id = %meta.id, command = "command", "identified command");
 
-                            if let Some((trigger, response)) = tail.trim().split_once(" ") {
-                                info!(id = %meta.id, ?trigger, ?response, "adding command");
+                                if let Some(trigger) = components.next() {
+                                    let response = components.collect::<Vec<_>>().join(" ");
 
-                                Some(WithMeta(
-                                    Task::BuiltIn(BuiltInCommand::AddCommand {
-                                        channel: msg.channel_login.to_owned(),
-                                        trigger: trigger.to_owned(),
-                                        response: response.to_owned(),
-                                    }),
-                                    meta,
-                                ))
-                            } else {
-                                None
+                                    if !response.is_empty() {
+                                        info!(id = %meta.id, ?trigger, ?response, "adding command");
+
+                                        Some(WithMeta(
+                                            Task::BuiltIn(BuiltInCommand::AddCommand {
+                                                channel: msg.channel_login.to_owned(),
+                                                trigger: trigger.to_owned(),
+                                                response: response.to_owned(),
+                                            }),
+                                            meta,
+                                        ))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
                             }
-                        } else {
-                            None
+                            other => Some(WithMeta(
+                                Task::Command {
+                                    channel: msg.channel_login.to_owned(),
+                                    sender: msg.sender.login.to_owned(),
+                                    command: other.to_owned(),
+                                    body: components.collect::<Vec<_>>().join(" "),
+                                },
+                                meta,
+                            )),
                         }
-                    } else if msg.message_text.contains("hi")
-                        && msg.message_text.contains("@oxoboxowot")
+                    } else if msg
+                        .message_text
+                        .to_lowercase()
+                        .split_whitespace()
+                        .any(|ea| ea == "hi")
+                        && msg.message_text.to_lowercase().contains("@oxoboxowot")
                     {
                         trace!(id = %meta.id, implicit_command = "greeting", "implicit command identified");
                         info!(id = %meta.id, ?msg.channel_login, ?msg.sender.login, ?msg.message_text);
@@ -190,7 +210,7 @@ impl Bot {
         mut task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
         res_tx: broadcast::Sender<WithMeta<Response>>,
         prefix: char,
-        mut commands: CommandsStore,
+        commands: CommandsStore,
     ) {
         debug!("starting");
 
@@ -206,12 +226,24 @@ impl Bot {
             let response = match task {
                 Some(WithMeta(
                     Task::Command {
-                        channel: _,
+                        channel,
                         sender: _,
-                        command: _,
+                        command,
+                        body: _,
                     },
-                    _meta,
-                )) => None,
+                    meta,
+                )) => commands
+                    .get_command(&channel, &command)
+                    .expect("getting a command should succeed")
+                    .map(|response| {
+                        WithMeta(
+                            Response::Say {
+                                channel,
+                                message: response,
+                            },
+                            meta,
+                        )
+                    }),
                 Some(WithMeta(Task::Implicit(ImplicitTask::Greet { channel, user }), meta)) => {
                     info!(id = %meta.id, ?channel, ?user, "implicit greet task");
 

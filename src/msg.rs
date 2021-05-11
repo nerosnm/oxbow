@@ -23,8 +23,10 @@ pub enum Task {
         channel: String,
         /// The user who sent the command.
         sender: String,
-        /// The command, including its arguments, but not including the prefix.
+        /// The command, not including the prefix.
         command: String,
+        /// The rest of the message that triggered the command.
+        body: String,
     },
     Implicit(ImplicitTask),
     BuiltIn(BuiltInCommand),
