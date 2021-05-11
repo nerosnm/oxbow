@@ -6,7 +6,6 @@ use std::{
 use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params;
 use tap::{TapFallible, TapOptional};
 use thiserror::Error;
 use tokio::{
@@ -22,6 +21,7 @@ use twitch_irc::{
 
 use crate::{
     auth::SQLiteTokenStore,
+    commands::CommandsStore,
     msg::{BuiltInCommand, ImplicitTask, Metadata, Response, Task, WithMeta},
 };
 
@@ -67,6 +67,8 @@ impl Bot {
         let config = ClientConfig::new_simple(creds);
         let (incoming_messages, client) = TwitchIRCClient::<TCPTransport, _>::new(config);
 
+        let commands = CommandsStore::new(self.conn_pool.clone());
+
         // Channel for the receive loop to trigger tasks in the process loop.
         let (task_tx, task_rx) = mpsc::unbounded_channel();
 
@@ -87,8 +89,8 @@ impl Bot {
         let process_loop = tokio::spawn(Self::process(
             task_rx,
             res_tx.clone(),
-            self.conn_pool.clone(),
             self.prefix,
+            commands,
         ));
 
         // For every channel, we need a response loop to perform Responses if
@@ -131,8 +133,8 @@ impl Bot {
                     let meta = Metadata { id: msg.message_id };
 
                     if let Some(tail) = msg.message_text.strip_prefix(prefix) {
-                        if let Some(tail) = tail.trim().strip_prefix("addcommand") {
-                            debug!(id = %meta.id, command = "addcommand", "identified command");
+                        if let Some(tail) = tail.trim().strip_prefix("command") {
+                            debug!(id = %meta.id, command = "command", "identified command");
 
                             if let Some((trigger, response)) = tail.trim().split_once(" ") {
                                 info!(id = %meta.id, ?trigger, ?response, "adding command");
@@ -183,12 +185,12 @@ impl Bot {
 
     /// Loops over incoming [`Task`]s, acts on them, and if necessary, sends a
     /// [`Response`] in `res_tx` with the appropriate response to send.
-    #[instrument(skip(task_rx, res_tx, pool, prefix))]
+    #[instrument(skip(task_rx, res_tx, prefix, commands))]
     async fn process(
         mut task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
         res_tx: broadcast::Sender<WithMeta<Response>>,
-        pool: Pool<SqliteConnectionManager>,
         prefix: char,
+        mut commands: CommandsStore,
     ) {
         debug!("starting");
 
@@ -231,16 +233,9 @@ impl Bot {
                 )) => {
                     info!(id = %meta.id, ?trigger, ?response, "add command task");
 
-                    let conn = pool.get().expect("pool should provide a connection");
-
-                    conn.execute(
-                        r#"
-                        INSERT INTO commands (channel, trigger, response)
-                        VALUES (?1, ?2, ?3);
-                        "#,
-                        params![channel, trigger, response],
-                    )
-                    .expect("database execution should succeed");
+                    commands
+                        .set_command(&channel, &trigger, &response)
+                        .expect("setting a command should succeed");
 
                     Some(WithMeta(
                         Response::Say {
