@@ -154,7 +154,7 @@ impl ReceiveHandler {
             let task = match message {
                 Some(ServerMessage::Privmsg(msg)) => {
                     let meta = Metadata { id: msg.message_id };
-                    let mut components = msg.message_text.split(" ");
+                    let mut components = msg.message_text.split(' ');
 
                     if let Some(command) =
                         components.next().and_then(|c| c.strip_prefix(self.prefix))
