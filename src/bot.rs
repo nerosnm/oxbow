@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     ops::DerefMut,
     path::{Path, PathBuf},
 };
@@ -99,7 +100,7 @@ impl Bot {
                 res_tx,
                 commands,
                 prefix,
-                word_search: WordSearch::new(),
+                word_searches: HashMap::new(),
             };
 
             handler.process().await;
@@ -303,7 +304,7 @@ struct ProcessHandler {
     res_tx: broadcast::Sender<(Response, Metadata)>,
     commands: CommandsStore,
     prefix: char,
-    word_search: WordSearch,
+    word_searches: HashMap<String, WordSearch>,
 }
 
 impl ProcessHandler {
@@ -367,11 +368,15 @@ impl ProcessHandler {
                 Some((Task::BuiltIn(BuiltInCommand::WordSearch), meta)) => {
                     info!(?meta, "word search task");
 
-                    self.word_search.reset();
+                    let word_search = self
+                        .word_searches
+                        .entry(meta.channel.to_string())
+                        .and_modify(|ws| ws.reset())
+                        .or_default();
 
                     Some(
                         Response::Say {
-                            message: format!("!wg {}", self.word_search.guess()),
+                            message: format!("!wg {}", word_search.guess()),
                         }
                         .with_meta(meta),
                     )
@@ -379,36 +384,71 @@ impl ProcessHandler {
                 Some((Task::BuiltIn(BuiltInCommand::WordLower { word, distance }), meta)) => {
                     info!(?meta, ?word, "word lower task");
 
-                    self.word_search.set_lower(&word, distance);
+                    if let Some(word_search) = self.word_searches.get_mut(&*meta.channel) {
+                        word_search.set_lower(&word, distance);
 
-                    Some(
-                        Response::Say {
-                            message: format!("!wg {}", self.word_search.guess()),
-                        }
-                        .with_meta(meta),
-                    )
+                        Some(
+                            Response::Say {
+                                message: format!("!wg {}", word_search.guess()),
+                            }
+                            .with_meta(meta),
+                        )
+                    } else {
+                        Some(
+                            Response::Say {
+                                message: format!(
+                                    "No word search in progress! Start one with {}search",
+                                    self.prefix
+                                ),
+                            }
+                            .with_meta(meta),
+                        )
+                    }
                 }
                 Some((Task::BuiltIn(BuiltInCommand::WordUpper { word, distance }), meta)) => {
                     info!(?meta, ?word, "word upper task");
 
-                    self.word_search.set_upper(&word, distance);
+                    if let Some(word_search) = self.word_searches.get_mut(&*meta.channel) {
+                        word_search.set_upper(&word, distance);
 
-                    Some(
-                        Response::Say {
-                            message: format!("!wg {}", self.word_search.guess()),
-                        }
-                        .with_meta(meta),
-                    )
+                        Some(
+                            Response::Say {
+                                message: format!("!wg {}", word_search.guess()),
+                            }
+                            .with_meta(meta),
+                        )
+                    } else {
+                        Some(
+                            Response::Say {
+                                message: format!(
+                                    "No word search in progress! Start one with {}search",
+                                    self.prefix
+                                ),
+                            }
+                            .with_meta(meta),
+                        )
+                    }
                 }
                 Some((Task::BuiltIn(BuiltInCommand::WordFound), meta)) => {
                     info!(?meta, "word found task");
 
-                    Some(
-                        Response::Say {
-                            message: "Word search stopped".to_owned(),
-                        }
-                        .with_meta(meta),
-                    )
+                    if let Some(word_search) = self.word_searches.get_mut(&*meta.channel) {
+                        word_search.reset();
+
+                        Some(
+                            Response::Say {
+                                message: "Word search stopped".to_owned(),
+                            }
+                            .with_meta(meta),
+                        )
+                    } else {
+                        Some(
+                            Response::Say {
+                                message: "No word search in progress!".to_owned(),
+                            }
+                            .with_meta(meta),
+                        )
+                    }
                 }
                 None => None,
             };
