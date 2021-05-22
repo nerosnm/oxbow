@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use tap::{TapFallible, TapOptional};
+use tap::{Pipe, TapFallible, TapOptional};
 use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, error, info, instrument, trace};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
     commands::CommandsStore,
@@ -42,7 +42,13 @@ impl ProcessHandler {
                     self.commands
                         .get_command(&meta.channel, &command)
                         .expect("getting a command should succeed")
-                        .map(|response| Response::Say { message: response }.with_meta(meta))
+                        .map(|message| Response::Say { message })
+                        .tap_none(|| warn!(?meta, ?command, "command not found"))
+                        .unwrap_or_else(|| Response::Say {
+                            message: format!("Command {}{} not found", self.prefix, command),
+                        })
+                        .with_meta(meta)
+                        .pipe(Some)
                 }
                 Some((Task::Implicit(ImplicitTask::Greet), meta)) => {
                     info!(?meta, "implicit greet task");
