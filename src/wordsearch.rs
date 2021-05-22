@@ -10,6 +10,12 @@ pub struct WordSearch {
     possible: Vec<String>,
 }
 
+impl Default for WordSearch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WordSearch {
     pub fn new() -> Self {
         let mut ws = Self { possible: vec![] };
