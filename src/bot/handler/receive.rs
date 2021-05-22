@@ -159,7 +159,20 @@ impl ReceiveHandler {
                         None
                     }
                 }
-                Some(_) => None,
+                Some(ServerMessage::Notice(notice))
+                    if notice
+                        .message_id
+                        .as_ref()
+                        .map(|id| id.starts_with("msg_"))
+                        .unwrap_or(false) =>
+                {
+                    error!(notice = %notice.message_text);
+                    None
+                }
+                Some(msg) => {
+                    debug!(?msg);
+                    None
+                }
                 None => None,
             };
 
