@@ -132,7 +132,7 @@ impl Bot {
 
 struct ReceiveHandler {
     msg_rx: mpsc::UnboundedReceiver<ServerMessage>,
-    task_tx: mpsc::UnboundedSender<WithMeta<Task>>,
+    task_tx: mpsc::UnboundedSender<(Task, Metadata)>,
     prefix: char,
 }
 
@@ -155,7 +155,12 @@ impl ReceiveHandler {
 
             let task = match message {
                 Some(ServerMessage::Privmsg(msg)) => {
-                    let meta = Metadata { id: msg.message_id };
+                    let meta = Metadata {
+                        id: msg.message_id.into(),
+                        channel: msg.channel_login.into(),
+                        sender: msg.sender.login.into(),
+                    };
+
                     let mut components = msg.message_text.split(' ');
 
                     if let Some(command) =
@@ -163,22 +168,21 @@ impl ReceiveHandler {
                     {
                         match command {
                             "command" => {
-                                debug!(id = %meta.id, command = "command", "identified command");
+                                debug!(?meta, command = "command", "identified command");
 
                                 if let Some(trigger) = components.next() {
                                     let response = components.collect::<Vec<_>>().join(" ");
 
                                     if !response.is_empty() {
-                                        info!(id = %meta.id, ?trigger, ?response, "adding command");
+                                        info!(?meta, ?trigger, ?response, "adding command");
 
-                                        Some(WithMeta(
+                                        Some(
                                             Task::BuiltIn(BuiltInCommand::AddCommand {
-                                                channel: msg.channel_login.to_owned(),
                                                 trigger: trigger.to_owned(),
                                                 response: response.to_owned(),
-                                            }),
-                                            meta,
-                                        ))
+                                            })
+                                            .with_meta(meta),
+                                        )
                                     } else {
                                         None
                                     }
@@ -188,36 +192,30 @@ impl ReceiveHandler {
                             }
 
                             "search" => {
-                                debug!(id = %meta.id, command = "search", "identified command");
+                                debug!(?meta, command = "search", "identified command");
 
-                                if msg.sender.login == "nerosnm" {
-                                    Some(WithMeta(
-                                        Task::BuiltIn(BuiltInCommand::WordSearch {
-                                            channel: msg.channel_login.to_owned(),
-                                        }),
-                                        meta,
-                                    ))
+                                if &*meta.sender == "nerosnm" {
+                                    Some(Task::BuiltIn(BuiltInCommand::WordSearch).with_meta(meta))
                                 } else {
                                     None
                                 }
                             }
 
                             "lower" => {
-                                debug!(id = %meta.id, command = "lower", "identified command");
+                                debug!(?meta, command = "lower", "identified command");
 
-                                if msg.sender.login == "nerosnm" {
+                                if &*meta.sender == "nerosnm" {
                                     if let Some(word) = components.next() {
                                         let distance =
                                             components.next().and_then(|d| d.parse().ok());
 
-                                        Some(WithMeta(
+                                        Some(
                                             Task::BuiltIn(BuiltInCommand::WordLower {
-                                                channel: msg.channel_login.to_owned(),
                                                 word: word.to_owned(),
                                                 distance,
-                                            }),
-                                            meta,
-                                        ))
+                                            })
+                                            .with_meta(meta),
+                                        )
                                     } else {
                                         None
                                     }
@@ -227,21 +225,20 @@ impl ReceiveHandler {
                             }
 
                             "upper" => {
-                                debug!(id = %meta.id, command = "upper", "identified command");
+                                debug!(?meta, command = "upper", "identified command");
 
-                                if msg.sender.login == "nerosnm" {
+                                if &*meta.sender == "nerosnm" {
                                     if let Some(word) = components.next() {
                                         let distance =
                                             components.next().and_then(|d| d.parse().ok());
 
-                                        Some(WithMeta(
+                                        Some(
                                             Task::BuiltIn(BuiltInCommand::WordUpper {
-                                                channel: msg.channel_login.to_owned(),
                                                 word: word.to_owned(),
                                                 distance,
-                                            }),
-                                            meta,
-                                        ))
+                                            })
+                                            .with_meta(meta),
+                                        )
                                     } else {
                                         None
                                     }
@@ -251,29 +248,22 @@ impl ReceiveHandler {
                             }
 
                             "found" => {
-                                debug!(id = %meta.id, command = "found", "identified command");
+                                debug!(?meta, command = "found", "identified command");
 
-                                if msg.sender.login == "nerosnm" {
-                                    Some(WithMeta(
-                                        Task::BuiltIn(BuiltInCommand::WordFound {
-                                            channel: msg.channel_login.to_owned(),
-                                        }),
-                                        meta,
-                                    ))
+                                if &*meta.sender == "nerosnm" {
+                                    Some(Task::BuiltIn(BuiltInCommand::WordFound).with_meta(meta))
                                 } else {
                                     None
                                 }
                             }
 
-                            other => Some(WithMeta(
+                            other => Some(
                                 Task::Command {
-                                    channel: msg.channel_login.to_owned(),
-                                    sender: msg.sender.login.to_owned(),
                                     command: other.to_owned(),
                                     body: components.collect::<Vec<_>>().join(" "),
-                                },
-                                meta,
-                            )),
+                                }
+                                .with_meta(meta),
+                            ),
                         }
                     } else if msg
                         .message_text
@@ -282,16 +272,14 @@ impl ReceiveHandler {
                         .any(|ea| ea == "hi")
                         && msg.message_text.to_lowercase().contains("@oxoboxowot")
                     {
-                        trace!(id = %meta.id, implicit_command = "greeting", "implicit command identified");
-                        info!(id = %meta.id, ?msg.channel_login, ?msg.sender.login, ?msg.message_text);
+                        trace!(
+                            ?meta,
+                            implicit_command = "greeting",
+                            "implicit command identified"
+                        );
+                        info!(?meta, ?msg.message_text);
 
-                        Some(WithMeta(
-                            Task::Implicit(ImplicitTask::Greet {
-                                channel: msg.channel_login,
-                                user: msg.sender.login,
-                            }),
-                            meta,
-                        ))
+                        Some(Task::Implicit(ImplicitTask::Greet).with_meta(meta))
                     } else {
                         None
                     }
@@ -300,20 +288,19 @@ impl ReceiveHandler {
                 None => None,
             };
 
-            if let Some(WithMeta(task, meta)) = task {
-                let id = meta.id.clone();
+            if let Some((task, meta)) = task {
                 let _ = self
                     .task_tx
-                    .send(WithMeta(task, meta))
-                    .tap_err(|e| error!(%id, error = ?e, "failed to send task message"));
+                    .send(task.with_cloned_meta(&meta))
+                    .tap_err(|e| error!(?meta, error = ?e, "failed to send task message"));
             }
         }
     }
 }
 
 struct ProcessHandler {
-    task_rx: mpsc::UnboundedReceiver<WithMeta<Task>>,
-    res_tx: broadcast::Sender<WithMeta<Response>>,
+    task_rx: mpsc::UnboundedReceiver<(Task, Metadata)>,
+    res_tx: broadcast::Sender<(Response, Metadata)>,
     commands: CommandsStore,
     prefix: char,
     word_search: WordSearch,
@@ -337,141 +324,100 @@ impl ProcessHandler {
                 .tap_none(|| error!("failed to receive task message"));
 
             let response = match task {
-                Some(WithMeta(
-                    Task::Command {
-                        channel,
-                        sender: _,
-                        command,
-                        body: _,
-                    },
-                    meta,
-                )) => self
-                    .commands
-                    .get_command(&channel, &command)
-                    .expect("getting a command should succeed")
-                    .map(|response| {
-                        WithMeta(
-                            Response::Say {
-                                channel,
-                                message: response,
-                            },
-                            meta,
-                        )
-                    }),
-                Some(WithMeta(Task::Implicit(ImplicitTask::Greet { channel, user }), meta)) => {
-                    info!(id = %meta.id, ?channel, ?user, "implicit greet task");
+                Some((Task::Command { command, body }, meta)) => {
+                    info!(?meta, ?command, ?body);
 
-                    Some(WithMeta(
-                        Response::Say {
-                            channel,
-                            message: format!("uwu *nuzzles @{}*", user),
-                        },
-                        meta,
-                    ))
+                    self.commands
+                        .get_command(&meta.channel, &command)
+                        .expect("getting a command should succeed")
+                        .map(|response| Response::Say { message: response }.with_meta(meta))
                 }
-                Some(WithMeta(
-                    Task::BuiltIn(BuiltInCommand::AddCommand {
-                        channel,
-                        trigger,
-                        response,
-                    }),
-                    meta,
-                )) => {
-                    info!(id = %meta.id, ?trigger, ?response, "add command task");
+                Some((Task::Implicit(ImplicitTask::Greet), meta)) => {
+                    info!(?meta, "implicit greet task");
+
+                    Some(
+                        Response::Say {
+                            message: format!("uwu *nuzzles @{}*", meta.sender),
+                        }
+                        .with_meta(meta),
+                    )
+                }
+                Some((Task::BuiltIn(BuiltInCommand::AddCommand { trigger, response }), meta)) => {
+                    info!(?meta, ?trigger, ?response, "add command task");
 
                     let already_exists = self
                         .commands
-                        .get_command(&channel, &trigger)
+                        .get_command(&meta.channel, &trigger)
                         .expect("getting a command should succeed")
                         .is_some();
 
                     self.commands
-                        .set_command(&channel, &trigger, &response)
+                        .set_command(&meta.channel, &trigger, &response)
                         .expect("setting a command should succeed");
 
                     let verb = if already_exists { "Updated" } else { "Added" };
 
-                    Some(WithMeta(
+                    Some(
                         Response::Say {
-                            channel,
                             message: format!("{} {}{}", verb, self.prefix, trigger),
-                        },
-                        meta,
-                    ))
+                        }
+                        .with_meta(meta),
+                    )
                 }
-                Some(WithMeta(Task::BuiltIn(BuiltInCommand::WordSearch { channel }), meta)) => {
-                    info!(id = %meta.id, "word search task");
+                Some((Task::BuiltIn(BuiltInCommand::WordSearch), meta)) => {
+                    info!(?meta, "word search task");
 
                     self.word_search.reset();
 
-                    Some(WithMeta(
+                    Some(
                         Response::Say {
-                            channel,
                             message: format!("!wg {}", self.word_search.guess()),
-                        },
-                        meta,
-                    ))
+                        }
+                        .with_meta(meta),
+                    )
                 }
-                Some(WithMeta(
-                    Task::BuiltIn(BuiltInCommand::WordLower {
-                        channel,
-                        word,
-                        distance,
-                    }),
-                    meta,
-                )) => {
-                    info!(id = %meta.id, ?word, "word lower task");
+                Some((Task::BuiltIn(BuiltInCommand::WordLower { word, distance }), meta)) => {
+                    info!(?meta, ?word, "word lower task");
 
                     self.word_search.set_lower(&word, distance);
 
-                    Some(WithMeta(
+                    Some(
                         Response::Say {
-                            channel,
                             message: format!("!wg {}", self.word_search.guess()),
-                        },
-                        meta,
-                    ))
+                        }
+                        .with_meta(meta),
+                    )
                 }
-                Some(WithMeta(
-                    Task::BuiltIn(BuiltInCommand::WordUpper {
-                        channel,
-                        word,
-                        distance,
-                    }),
-                    meta,
-                )) => {
-                    info!(id = %meta.id, ?word, "word upper task");
+                Some((Task::BuiltIn(BuiltInCommand::WordUpper { word, distance }), meta)) => {
+                    info!(?meta, ?word, "word upper task");
 
                     self.word_search.set_upper(&word, distance);
 
-                    Some(WithMeta(
+                    Some(
                         Response::Say {
-                            channel,
                             message: format!("!wg {}", self.word_search.guess()),
-                        },
-                        meta,
-                    ))
+                        }
+                        .with_meta(meta),
+                    )
                 }
-                Some(WithMeta(Task::BuiltIn(BuiltInCommand::WordFound { channel }), meta)) => {
-                    info!(id = %meta.id, "word found task");
+                Some((Task::BuiltIn(BuiltInCommand::WordFound), meta)) => {
+                    info!(?meta, "word found task");
 
-                    Some(WithMeta(
+                    Some(
                         Response::Say {
-                            channel,
-                            message: format!("Word search stopped"),
-                        },
-                        meta,
-                    ))
+                            message: "Word search stopped".to_owned(),
+                        }
+                        .with_meta(meta),
+                    )
                 }
                 None => None,
             };
 
-            if let Some(WithMeta(res, meta)) = response {
-                let id = meta.id.clone();
+            if let Some((res, meta)) = response {
                 let _ = self
                     .res_tx
-                    .send(WithMeta(res, meta))
-                    .tap_err(|e| error!(%id, error = ?e, "failed to send response message"));
+                    .send(res.with_cloned_meta(&meta))
+                    .tap_err(|e| error!(?meta, error = ?e, "failed to send response message"));
             }
         }
     }
@@ -482,7 +428,7 @@ where
     T: Transport,
     L: LoginCredentials,
 {
-    res_rx: broadcast::Receiver<WithMeta<Response>>,
+    res_rx: broadcast::Receiver<(Response, Metadata)>,
     client: TwitchIRCClient<T, L>,
     channel: String,
 }
@@ -516,34 +462,20 @@ where
                 .tap_ok(|_| trace!("received response message"))
                 .tap_err(|e| error!(error = ?e, "failed to receive response message"));
 
-            let response = match res {
-                Ok(WithMeta(
-                    Response::Say {
-                        channel: msg_channel,
-                        message,
-                    },
-                    meta,
-                )) if msg_channel == self.channel => {
-                    info!(id = %meta.id, response.channel = ?msg_channel, response.message = ?message, "sending response");
+            if let Ok((response, meta)) = res {
+                if *meta.channel == self.channel {
+                    match response {
+                        Response::Say { message } => {
+                            info!(?meta, ?message, "sending response");
 
-                    Some(WithMeta((msg_channel, message), meta))
+                            let _ = self
+                                .client
+                                .say(self.channel.clone(), message)
+                                .await
+                                .tap_err(|e| error!(?meta, error = ?e, "unable to send response"));
+                        }
+                    }
                 }
-                Ok(WithMeta(
-                    Response::Say {
-                        channel: _,
-                        message: _,
-                    },
-                    _,
-                )) => None,
-                Err(_) => None,
-            };
-
-            if let Some(WithMeta((channel, message), meta)) = response {
-                let _ = self
-                    .client
-                    .say(channel, message)
-                    .await
-                    .tap_err(|e| error!(id = %meta.id, error = ?e, "unable to send response"));
             }
         }
     }

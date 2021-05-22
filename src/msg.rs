@@ -1,28 +1,40 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
-/// A value bundled together with some [`Metadata`].
-#[derive(Debug, Clone)]
-pub struct WithMeta<T>(pub T, pub Metadata)
-where
-    T: Debug + Clone;
-
-/// Metadata about a task, so that it can be tracked through from the initial
-/// trigger to the final response.
+/// Metadata about a task (data that is common to all tasks and helps identify
+/// it through its whole lifecycle).
 #[derive(Debug, Clone)]
 pub struct Metadata {
-    pub id: String,
+    /// The ID of the original message that caused the command.
+    pub id: Arc<str>,
+    /// The channel the command was sent in.
+    pub channel: Arc<str>,
+    /// The user who sent the command.
+    pub sender: Arc<str>,
 }
 
-/// Commands to perform, which may or may not result in a [`Response`] being
-/// sent.
+pub trait WithMeta<M> {
+    fn with_meta(self, meta: M) -> (Self, M)
+    where
+        Self: Sized,
+    {
+        (self, meta)
+    }
+
+    fn with_cloned_meta(self, meta: &M) -> (Self, M)
+    where
+        Self: Sized,
+        M: Clone,
+    {
+        self.with_meta(meta.clone())
+    }
+}
+
+/// Tasks to perform, which may or may not result in a [`Response`] being sent.
 #[derive(Debug, Clone)]
 pub enum Task {
-    /// Respond to an arbitrary `command` sent by a `sender` in a `channel`.
+    /// Respond to an arbitrary `command`, identified from a message beginning
+    /// with a preset prefix.
     Command {
-        /// The Twitch IRC channel the command was sent in.
-        channel: String,
-        /// The user who sent the command.
-        sender: String,
         /// The command, not including the prefix.
         command: String,
         /// The rest of the message that triggered the command.
@@ -32,16 +44,13 @@ pub enum Task {
     BuiltIn(BuiltInCommand),
 }
 
+impl WithMeta<Metadata> for Task {}
+
 /// Commands which are not triggered by an explicit message of the form
 /// `!command` by a user, but are instead triggered in response to a heuristic.
 #[derive(Debug, Clone)]
 pub enum ImplicitTask {
-    Greet {
-        /// The Twitch IRC channel the greeting should be sent in.
-        channel: String,
-        /// The user to greet.
-        user: String,
-    },
+    Greet,
 }
 
 /// Commands that are built in to the bot, rather than being arbitrary commands
@@ -50,40 +59,36 @@ pub enum ImplicitTask {
 pub enum BuiltInCommand {
     /// Add a new command to the database, with the given trigger and response.
     AddCommand {
-        /// The channel the command should be added in.
-        channel: String,
         /// The string after the prefix that should cause this command to run.
         trigger: String,
         /// The response that should be sent in a message.
         response: String,
     },
     /// Start a word search run.
-    WordSearch { channel: String },
+    WordSearch,
     /// Set the lower bound after a guess.
     WordLower {
-        channel: String,
         word: String,
         distance: Option<usize>,
     },
     /// Set the upper bound after a guess.
     WordUpper {
-        channel: String,
         word: String,
         distance: Option<usize>,
     },
     /// End a word search run.
-    WordFound { channel: String },
+    WordFound,
 }
 
 /// Commands to respond in some way to an action, such as by replying with a
 /// message in an IRC channel.
 #[derive(Debug, Clone)]
 pub enum Response {
-    /// Send a response with the text `message` in the channel `channel`.
+    /// Send a response with the text `message`.
     Say {
-        /// The Twitch IRC channel the message should be sent in.
-        channel: String,
         /// The message to send.
         message: String,
     },
 }
+
+impl WithMeta<Metadata> for Response {}
