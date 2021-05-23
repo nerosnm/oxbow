@@ -19,10 +19,15 @@ async fn main() -> Result<()> {
         .client_id(opts.client_id)
         .client_secret(opts.client_secret)
         .twitch_name(opts.twitch_name)
-        .obs_port(opts.obs_port)
-        .obs_password(opts.obs_password)
         .extend_channels(opts.channels)
         .prefix(opts.prefix);
+
+    #[cfg(feature = "obs")]
+    {
+        bot_the_builder = bot_the_builder
+            .obs_port(opts.obs_port)
+            .obs_password(opts.obs_password);
+    }
 
     if let Some(db_path) = opts.database {
         bot_the_builder = bot_the_builder.db_path(db_path);

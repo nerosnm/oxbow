@@ -95,10 +95,13 @@ impl BotBuilder {
         let client_id = self.client_id.ok_or(BotBuildError::NoClientId)?;
         let client_secret = self.client_secret.ok_or(BotBuildError::NoClientSecret)?;
         let twitch_name = self.twitch_name.ok_or(BotBuildError::NoTwitchName)?;
-        let obs_port = self.obs_port.ok_or(BotBuildError::NoObsPort)?;
-        let obs_password = self.obs_password.ok_or(BotBuildError::NoObsPassword)?;
         let channels = self.channels.ok_or(BotBuildError::NoChannels)?;
         let prefix = self.prefix.ok_or(BotBuildError::NoPrefix)?;
+
+        #[cfg(feature = "obs")]
+        let obs_port = self.obs_port.ok_or(BotBuildError::NoObsPort)?;
+        #[cfg(feature = "obs")]
+        let obs_password = self.obs_password.ok_or(BotBuildError::NoObsPassword)?;
 
         let manager = self.db_path.map_or_else(
             SqliteConnectionManager::memory,
@@ -111,7 +114,9 @@ impl BotBuilder {
             client_id,
             client_secret,
             twitch_name,
+            #[cfg(feature = "obs")]
             obs_port,
+            #[cfg(feature = "obs")]
             obs_password,
             channels,
             prefix,

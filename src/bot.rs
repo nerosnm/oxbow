@@ -1,10 +1,6 @@
-mod builder;
-mod handler;
-
 use std::{collections::HashMap, ops::DerefMut};
 
 use eyre::Result;
-use handler::ObsHandler;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
@@ -12,18 +8,26 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::debug;
 use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
+use crate::{auth::SQLiteTokenStore, commands::CommandsStore};
+
+mod builder;
+mod handler;
+
+#[cfg(feature = "obs")]
+pub use self::handler::ObsHandler;
 pub use self::{
     builder::{BotBuilder, BotTheBuilder},
     handler::{ProcessHandler, ReceiveHandler, RespondHandler},
 };
-use crate::{auth::SQLiteTokenStore, commands::CommandsStore};
 
 /// The main `oxbow` bot entry point.
 pub struct Bot {
     client_id: String,
     client_secret: String,
     twitch_name: String,
+    #[cfg(feature = "obs")]
     obs_port: u16,
+    #[cfg(feature = "obs")]
     obs_password: String,
     channels: Vec<String>,
     prefix: char,
@@ -99,14 +103,17 @@ impl Bot {
             handler.process_loop().await;
         });
 
-        // We need a loop to interact with OBS.
-        let port = self.obs_port;
-        let password = self.obs_password.clone();
-        tokio::spawn(async move {
-            let mut handler = ObsHandler { port, password };
+        #[cfg(feature = "obs")]
+        {
+            // We need a loop to interact with OBS.
+            let port = self.obs_port;
+            let password = self.obs_password.clone();
+            tokio::spawn(async move {
+                let mut handler = ObsHandler { port, password };
 
-            handler.obs_loop().await;
-        });
+                handler.obs_loop().await;
+            });
+        }
 
         // For every channel, we need a response loop to perform Responses if
         // they're relevant to that channel.
