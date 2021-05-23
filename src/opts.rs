@@ -24,6 +24,14 @@ pub struct Opts {
     )]
     pub twitch_name: String,
 
+    /// The port of the OBS websocket.
+    #[clap(long = "obs-port", env = "OBS_PORT", hide_env_values = true)]
+    pub obs_port: u16,
+
+    /// The password for the OBS websocket.
+    #[clap(long = "obs-password", env = "OBS_PASSWORD", hide_env_values = true)]
+    pub obs_password: String,
+
     /// A comma-separated list of channels to join.
     #[clap(short = 'c', long = "channels")]
     pub channels: Vec<String>,

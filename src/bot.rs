@@ -22,6 +22,8 @@ pub struct Bot {
     client_id: String,
     client_secret: String,
     twitch_name: String,
+    obs_port: u16,
+    obs_password: String,
     channels: Vec<String>,
     prefix: char,
     conn_pool: Pool<SqliteConnectionManager>,

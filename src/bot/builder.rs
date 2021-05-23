@@ -18,6 +18,8 @@ pub struct BotBuilder {
     client_id: Option<String>,
     client_secret: Option<String>,
     twitch_name: Option<String>,
+    obs_port: Option<u16>,
+    obs_password: Option<String>,
     channels: Option<Vec<String>>,
     db_path: Option<PathBuf>,
     prefix: Option<char>,
@@ -39,6 +41,18 @@ impl BotBuilder {
     /// Set the Twitch username of this bot.
     pub fn twitch_name<S: ToString>(mut self, twitch_name: S) -> Self {
         self.twitch_name = Some(twitch_name.to_string());
+        self
+    }
+
+    /// Set the OBS websocket port.
+    pub fn obs_port(mut self, obs_port: u16) -> Self {
+        self.obs_port = Some(obs_port);
+        self
+    }
+
+    /// Set the OBS websocket password.
+    pub fn obs_password<S: ToString>(mut self, obs_password: S) -> Self {
+        self.obs_password = Some(obs_password.to_string());
         self
     }
 
@@ -81,6 +95,8 @@ impl BotBuilder {
         let client_id = self.client_id.ok_or(BotBuildError::NoClientId)?;
         let client_secret = self.client_secret.ok_or(BotBuildError::NoClientSecret)?;
         let twitch_name = self.twitch_name.ok_or(BotBuildError::NoTwitchName)?;
+        let obs_port = self.obs_port.ok_or(BotBuildError::NoObsPort)?;
+        let obs_password = self.obs_password.ok_or(BotBuildError::NoObsPassword)?;
         let channels = self.channels.ok_or(BotBuildError::NoChannels)?;
         let prefix = self.prefix.ok_or(BotBuildError::NoPrefix)?;
 
@@ -95,6 +111,8 @@ impl BotBuilder {
             client_id,
             client_secret,
             twitch_name,
+            obs_port,
+            obs_password,
             channels,
             prefix,
             conn_pool,
@@ -112,6 +130,12 @@ pub enum BotBuildError {
 
     #[error("no twitch name provided")]
     NoTwitchName,
+
+    #[error("no OBS port provided")]
+    NoObsPort,
+
+    #[error("no OBS password provided")]
+    NoObsPassword,
 
     #[error("no channels to join provided")]
     NoChannels,

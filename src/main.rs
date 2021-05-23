@@ -19,6 +19,8 @@ async fn main() -> Result<()> {
         .client_id(opts.client_id)
         .client_secret(opts.client_secret)
         .twitch_name(opts.twitch_name)
+        .obs_port(opts.obs_port)
+        .obs_password(opts.obs_password)
         .extend_channels(opts.channels)
         .prefix(opts.prefix);
 
