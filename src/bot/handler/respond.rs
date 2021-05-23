@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tap::TapFallible;
+use thiserror::Error;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument, trace};
 use twitch_irc::{login::LoginCredentials, Transport, TwitchIRCClient};
@@ -22,10 +22,10 @@ where
     T: Transport,
     L: LoginCredentials,
 {
-    /// Watches for relevant messages coming in through `msg_rx` and acts on
-    /// them in `channel`, such as sending responses.
+    /// Loops over incoming [`Response`]s and acts on them, such as by sending
+    /// messages in a channel.
     #[instrument(skip(self))]
-    pub async fn respond(&mut self) {
+    pub async fn respond_loop(&mut self) {
         debug!("starting");
 
         self.client.join(self.channel.clone());
@@ -37,30 +37,55 @@ where
         info!("joined channel");
 
         loop {
-            trace!("waiting for response message");
-
-            let res = self
-                .res_rx
-                .recv()
-                .await
-                .tap_ok(|_| trace!("received response message"))
-                .tap_err(|e| error!(error = ?e, "failed to receive response message"));
-
-            if let Ok((response, meta)) = res {
-                if *meta.channel == self.channel {
-                    match response {
-                        Response::Say { message } => {
-                            info!(?meta, ?message, "sending response");
-
-                            let _ = self
-                                .client
-                                .say(self.channel.clone(), message)
-                                .await
-                                .tap_err(|e| error!(?meta, error = ?e, "unable to send response"));
-                        }
-                    }
-                }
+            match self.respond().await {
+                Ok(()) => {}
+                Err(err) => error!(%err),
             }
         }
     }
+
+    /// Gets an incoming [`Response`] and acts on it, such as by sending a
+    /// message in a channel.
+    #[instrument(skip(self))]
+    async fn respond(&mut self) -> Result<(), RespondError<T, L>> {
+        trace!("waiting for response message");
+
+        let (res, meta) = self.res_rx.recv().await?;
+
+        if *meta.channel == self.channel {
+            self.send_response(res, meta).await?;
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn send_response(
+        &mut self,
+        res: Response,
+        meta: Metadata,
+    ) -> Result<(), RespondError<T, L>> {
+        match res {
+            Response::Say { message } => {
+                info!(?meta, ?message, "sending response");
+
+                self.client.say(self.channel.clone(), message).await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+enum RespondError<T, L>
+where
+    T: Transport,
+    L: LoginCredentials,
+{
+    #[error("failed to receive response: {0}")]
+    ReceiveResponse(#[from] broadcast::error::RecvError),
+
+    #[error("failed to send response message: {0}")]
+    Say(#[from] twitch_irc::Error<T, L>),
 }

@@ -76,7 +76,7 @@ impl Bot {
                 prefix,
             };
 
-            handler.receive().await;
+            handler.receive_loop().await;
         });
 
         // Spawn a processing loop to interpret Tasks and turn them into
@@ -93,7 +93,7 @@ impl Bot {
                 word_searches: HashMap::new(),
             };
 
-            handler.process().await;
+            handler.process_loop().await;
         });
 
         // For every channel, we need a response loop to perform Responses if
@@ -110,7 +110,7 @@ impl Bot {
                     channel,
                 };
 
-                handler.respond().await;
+                handler.respond_loop().await;
             });
         }
 
