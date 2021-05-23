@@ -43,11 +43,7 @@ impl ProcessHandler {
     async fn process(&mut self) -> Result<(), ProcessError> {
         trace!("waiting for task message");
 
-        let (task, meta) = self
-            .task_rx
-            .recv()
-            .await
-            .ok_or_else(|| ProcessError::ReceiveTask)?;
+        let (task, meta) = self.task_rx.recv().await.ok_or(ProcessError::ReceiveTask)?;
 
         trace!("received task message");
 

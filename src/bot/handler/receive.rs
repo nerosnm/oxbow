@@ -39,7 +39,7 @@ impl ReceiveHandler {
             .msg_rx
             .recv()
             .await
-            .ok_or_else(|| ReceiveError::ReceiveMessage)?;
+            .ok_or(ReceiveError::ReceiveMessage)?;
 
         trace!("received incoming message");
 
