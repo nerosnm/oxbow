@@ -4,6 +4,7 @@ mod handler;
 use std::{collections::HashMap, ops::DerefMut};
 
 use eyre::Result;
+use handler::ObsHandler;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
@@ -96,6 +97,15 @@ impl Bot {
             };
 
             handler.process_loop().await;
+        });
+
+        // We need a loop to interact with OBS.
+        let port = self.obs_port;
+        let password = self.obs_password.clone();
+        tokio::spawn(async move {
+            let mut handler = ObsHandler { port, password };
+
+            handler.obs_loop().await;
         });
 
         // For every channel, we need a response loop to perform Responses if
