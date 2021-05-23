@@ -202,7 +202,7 @@ impl ReceiveHandler {
                 iter::empty().collect()
             }
             msg => {
-                debug!(?msg);
+                trace!(?msg);
                 iter::empty().collect()
             }
         };
