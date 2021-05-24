@@ -66,13 +66,11 @@ impl ProcessHandler {
 
                 self.commands
                     .get_command(&meta.channel, &command)?
-                    .map(|message| Response::Say { message })
                     .tap_none(|| warn!(?meta, ?command, "command not found"))
-                    .unwrap_or_else(|| Response::Say {
-                        message: format!("Command {}{} not found", self.prefix, command),
-                    })
-                    .with_meta(meta)
-                    .pipe(iter::once)
+                    .map(|message| vec![Response::Say { message }])
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|ea| ea.with_cloned_meta(&meta))
                     .collect()
             }
             Task::Implicit(ImplicitTask::Greet) => {
