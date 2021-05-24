@@ -18,7 +18,7 @@ pub struct ProcessHandler {
     pub(in crate::bot) task_rx: mpsc::UnboundedReceiver<(Task, Metadata)>,
     pub(in crate::bot) res_tx: broadcast::Sender<(Response, Metadata)>,
     pub(in crate::bot) commands: CommandsStore,
-    pub(in crate::bot) prefix: char,
+    pub(in crate::bot) prefix: String,
     pub(in crate::bot) word_searches: HashMap<String, WordSearch>,
 }
 

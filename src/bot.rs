@@ -8,17 +8,13 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::debug;
 use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
-use crate::{auth::SQLiteTokenStore, commands::CommandsStore};
+use crate::{auth::SQLiteTokenStore, commands::CommandsStore, settings::Settings};
 
-mod builder;
 mod handler;
 
 #[cfg(feature = "obs")]
 pub use self::handler::ObsHandler;
-pub use self::{
-    builder::{BotBuilder, BotTheBuilder},
-    handler::{ProcessHandler, ReceiveHandler, RespondHandler},
-};
+pub use self::handler::{ProcessHandler, ReceiveHandler, RespondHandler};
 
 /// The main `oxbow` bot entry point.
 pub struct Bot {
@@ -30,19 +26,31 @@ pub struct Bot {
     #[cfg(feature = "obs")]
     obs_password: String,
     channels: Vec<String>,
-    prefix: char,
+    prefix: String,
     conn_pool: Pool<SqliteConnectionManager>,
 }
 
 impl Bot {
-    /// Create a [`BotBuilder`] to build an instance of [`Bot`].
-    pub fn builder() -> BotBuilder {
-        BotBuilder::default()
-    }
+    pub fn new(settings: Settings) -> Result<Self, BotError> {
+        let manager = settings.database_path.map_or_else(
+            SqliteConnectionManager::memory,
+            SqliteConnectionManager::file,
+        );
 
-    /// Create [`BotTheBuilder`] to build an instance of [`Bot`].
-    pub fn the_builder() -> BotTheBuilder {
-        BotTheBuilder::default()
+        let conn_pool = Pool::new(manager)?;
+
+        Ok(Self {
+            client_id: settings.twitch.client_id,
+            client_secret: settings.twitch.client_secret,
+            twitch_name: settings.twitch.name,
+            #[cfg(feature = "obs")]
+            obs_port: settings.obs.websocket_port,
+            #[cfg(feature = "obs")]
+            obs_password: settings.obs.websocket_password,
+            channels: settings.twitch.channels,
+            prefix: settings.prefix,
+            conn_pool,
+        })
     }
 
     /// Main run loop for the bot.
@@ -75,7 +83,7 @@ impl Bot {
 
         // Spawn a receive loop to interpret incoming messages and turn them
         // into Tasks if necessary.
-        let prefix = self.prefix;
+        let prefix = self.prefix.clone();
         let receive_loop = tokio::spawn(async move {
             let mut handler = ReceiveHandler {
                 msg_rx,
@@ -90,7 +98,7 @@ impl Bot {
         // Responses if necessary.
         let res_tx = res_tx_orig.clone();
         let commands = CommandsStore::new(self.conn_pool.clone());
-        let prefix = self.prefix;
+        let prefix = self.prefix.clone();
         let process_loop = tokio::spawn(async move {
             let mut handler = ProcessHandler {
                 task_rx,

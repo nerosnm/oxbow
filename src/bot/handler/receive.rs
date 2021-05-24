@@ -11,7 +11,7 @@ use crate::msg::{BuiltInCommand, ImplicitTask, Metadata, Task, WithMeta};
 pub struct ReceiveHandler {
     pub(in crate::bot) msg_rx: mpsc::UnboundedReceiver<ServerMessage>,
     pub(in crate::bot) task_tx: mpsc::UnboundedSender<(Task, Metadata)>,
-    pub(in crate::bot) prefix: char,
+    pub(in crate::bot) prefix: String,
 }
 
 impl ReceiveHandler {
@@ -65,7 +65,8 @@ impl ReceiveHandler {
 
                 let mut components = msg.message_text.split(' ');
 
-                if let Some(command) = components.next().and_then(|c| c.strip_prefix(self.prefix)) {
+                if let Some(command) = components.next().and_then(|c| c.strip_prefix(&self.prefix))
+                {
                     match command {
                         "command" => {
                             debug!(?meta, command = "command", "identified command");
