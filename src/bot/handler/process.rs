@@ -190,11 +190,15 @@ impl ProcessHandler {
             }
         };
 
+        debug!(?responses, "returning responses");
+
         Ok(responses)
     }
 
     #[instrument(skip(self))]
     async fn send_response(&self, response: Response, meta: Metadata) -> Result<(), ProcessError> {
+        debug!(?meta, ?response, "sending response");
+
         let _ = self
             .res_tx
             .send(response.with_cloned_meta(&meta))

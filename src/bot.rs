@@ -8,7 +8,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
-use tracing::debug;
+use tracing::{debug, info};
 use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
 pub use self::{
@@ -99,6 +99,8 @@ impl Bot {
         // For every channel, we need a response loop to perform Responses if
         // they're relevant to that channel.
         for channel in self.channels.iter() {
+            info!(?channel, "joining channel");
+
             let res_rx = res_tx_orig.subscribe();
             let client = client.clone();
             let channel = channel.to_owned();
