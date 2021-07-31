@@ -24,7 +24,7 @@ pub struct Opts {
     )]
     pub twitch_name: String,
 
-    /// A comma-separated list of channels to join.
+    /// A space-separated list of channels to join.
     #[clap(short = 'c', long = "channels")]
     pub channels: Vec<String>,
 

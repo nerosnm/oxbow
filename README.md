@@ -41,8 +41,8 @@ DATABASE=""
 
 Build the bot with `cargo build --release`, and then run the executable at `target/release/oxbow`. 
 
-You must provide the `--channels` argument with a comma-separated list of Twitch chat channels to 
-join (e.g. `oxbow --channels nerosnm,stuck_overflow`), otherwise the bot will not join any channels 
+You must provide the `--channels` argument with a space-separated list of Twitch chat channels to 
+join (e.g. `oxbow --channels nerosnm stuck_overflow`), otherwise the bot will not join any channels 
 and you will have no way of interacting with it.
 
 To customise the prefix that the bot uses for commands (default: `!`), you can provide the 
@@ -50,7 +50,7 @@ To customise the prefix that the bot uses for commands (default: `!`), you can p
 
 > To provide command line arguments if you are using `cargo run` to run the bot rather than the
 > executable itself, they should be provided after a `--` argument, e.g. `cargo run --release -- 
-> --channels foo,bar,baz`.
+> --channels foo bar baz`.
 
 ## License
 
