@@ -50,7 +50,7 @@
       apps.oxbow = flake-utils.lib.mkApp {
         drv = packages.oxbow;
       };
-      defaultApp = apps.haytsa;
+      defaultApp = apps.oxbow;
 
       devShell = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
