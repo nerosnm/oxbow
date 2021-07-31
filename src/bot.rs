@@ -8,7 +8,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 use twitch_irc::{login::RefreshingLoginCredentials, ClientConfig, TCPTransport, TwitchIRCClient};
 
 pub use self::{
@@ -42,7 +42,10 @@ impl Bot {
     ///
     /// Spawns tasks to receive messages, and to send messages to each connected
     /// channel.
+    #[instrument(skip(self), fields(channels = ?self.channels, twitch_name = %self.twitch_name, prefix = %self.prefix))]
     pub async fn run(&mut self) -> Result<(), BotError> {
+        info!("starting bot");
+
         let mut conn = self.conn_pool.get()?;
         let report = crate::db::migrations::runner().run(conn.deref_mut())?;
         debug!(?report);
