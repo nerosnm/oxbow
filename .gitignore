@@ -9,3 +9,5 @@
 
 .env
 *.sqlite3
+
+/result
