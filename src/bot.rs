@@ -19,8 +19,8 @@ use crate::{auth::SQLiteTokenStore, commands::CommandsStore};
 
 /// The main `oxbow` bot entry point.
 pub struct Bot {
-    client_id: String,
-    client_secret: String,
+    twitch_client_id: String,
+    twitch_client_secret: String,
     twitch_name: String,
     channels: Vec<String>,
     prefix: char,
@@ -51,12 +51,17 @@ impl Bot {
         debug!(?report);
 
         let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
-        crate::auth::authenticate(&mut store, &self.client_id, &self.client_secret).await?;
+        crate::auth::authenticate(
+            &mut store,
+            &self.twitch_client_id,
+            &self.twitch_client_secret,
+        )
+        .await?;
 
         let creds = RefreshingLoginCredentials::new(
             self.twitch_name.clone(),
-            self.client_id.clone(),
-            self.client_secret.clone(),
+            self.twitch_client_id.clone(),
+            self.twitch_client_secret.clone(),
             store,
         );
         let config = ClientConfig::new_simple(creds);

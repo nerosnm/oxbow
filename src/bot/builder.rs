@@ -15,8 +15,8 @@ pub type BotTheBuilder = BotBuilder;
 /// Builder for an instance of [`Bot`].
 #[derive(Default)]
 pub struct BotBuilder {
-    client_id: Option<String>,
-    client_secret: Option<String>,
+    twitch_client_id: Option<String>,
+    twitch_client_secret: Option<String>,
     twitch_name: Option<String>,
     channels: Option<Vec<String>>,
     db_path: Option<PathBuf>,
@@ -24,15 +24,14 @@ pub struct BotBuilder {
 }
 
 impl BotBuilder {
-    /// Set the client ID this bot will use for authentication.
-    pub fn client_id<S: ToString>(mut self, client_id: S) -> Self {
-        self.client_id = Some(client_id.to_string());
-        self
-    }
-
-    /// Set the client secret this bot will use for authentication.
-    pub fn client_secret<S: ToString>(mut self, client_secret: S) -> Self {
-        self.client_secret = Some(client_secret.to_string());
+    /// Set the client ID and client secret this bot will use for authentication with Twitch.
+    pub fn twitch_credentials<S1: ToString, S2: ToString>(
+        mut self,
+        client_id: S1,
+        client_secret: S2,
+    ) -> Self {
+        self.twitch_client_id = Some(client_id.to_string());
+        self.twitch_client_secret = Some(client_secret.to_string());
         self
     }
 
@@ -78,8 +77,10 @@ impl BotBuilder {
 
     /// Create a [`Bot`] from this builder, validating the provided values.
     pub fn build(self) -> Result<Bot, BotBuildError> {
-        let client_id = self.client_id.ok_or(BotBuildError::NoClientId)?;
-        let client_secret = self.client_secret.ok_or(BotBuildError::NoClientSecret)?;
+        let twitch_client_id = self.twitch_client_id.ok_or(BotBuildError::NoClientId)?;
+        let twitch_client_secret = self
+            .twitch_client_secret
+            .ok_or(BotBuildError::NoClientSecret)?;
         let twitch_name = self.twitch_name.ok_or(BotBuildError::NoTwitchName)?;
         let channels = self.channels.ok_or(BotBuildError::NoChannels)?;
         let prefix = self.prefix.ok_or(BotBuildError::NoPrefix)?;
@@ -92,8 +93,8 @@ impl BotBuilder {
         let conn_pool = Pool::new(manager)?;
 
         Ok(Bot {
-            client_id,
-            client_secret,
+            twitch_client_id,
+            twitch_client_secret,
             twitch_name,
             channels,
             prefix,

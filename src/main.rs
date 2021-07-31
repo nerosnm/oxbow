@@ -16,8 +16,7 @@ async fn main() -> Result<()> {
     let opts: Opts = Opts::parse();
 
     let mut bot_the_builder = Bot::the_builder()
-        .client_id(opts.client_id)
-        .client_secret(opts.client_secret)
+        .twitch_credentials(opts.client_id, opts.client_secret)
         .twitch_name(opts.twitch_name)
         .extend_channels(opts.channels)
         .prefix(opts.prefix);
