@@ -77,11 +77,13 @@ impl Bot {
         // Spawn a receive loop to interpret incoming messages and turn them
         // into Tasks if necessary.
         let prefix = self.prefix;
+        let twitch_name = self.twitch_name.clone();
         let receive_loop = tokio::spawn(async move {
             let mut handler = ReceiveHandler {
                 msg_rx,
                 task_tx,
                 prefix,
+                twitch_name,
             };
 
             handler.receive_loop().await;

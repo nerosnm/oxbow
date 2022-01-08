@@ -12,6 +12,7 @@ pub struct ReceiveHandler {
     pub(in crate::bot) msg_rx: mpsc::UnboundedReceiver<ServerMessage>,
     pub(in crate::bot) task_tx: mpsc::UnboundedSender<(Task, Metadata)>,
     pub(in crate::bot) prefix: char,
+    pub(in crate::bot) twitch_name: String,
 }
 
 impl ReceiveHandler {
@@ -174,7 +175,10 @@ impl ReceiveHandler {
                     .to_lowercase()
                     .split_whitespace()
                     .any(|ea| ea == "hi")
-                    && msg.message_text.to_lowercase().contains("@oxoboxowot")
+                    && msg
+                        .message_text
+                        .to_lowercase()
+                        .contains(&format!("@{}", self.twitch_name))
                 {
                     trace!(
                         ?meta,
