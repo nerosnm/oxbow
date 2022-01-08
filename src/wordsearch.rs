@@ -1,5 +1,3 @@
-use std::iter::repeat;
-
 lazy_static::lazy_static! {
     static ref ALL: Vec<String> = {
         include_str!("../assets/words.txt").split_whitespace().map(ToOwned::to_owned).collect()
@@ -70,7 +68,7 @@ impl WordSearch {
             (word1, word2)
         };
         // Generate the correct amount of spaces to 'pad' the shorter string.
-        let append_spaces = repeat(" ").take(w1.len() - w2.len()).collect::<String>();
+        let append_spaces = " ".repeat(w1.len() - w2.len());
         // Push spaces to the shorter string.
         let w2_padded = w2.to_owned() + &append_spaces;
         // Calculating the Hamming distance

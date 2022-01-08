@@ -78,7 +78,7 @@ impl ReceiveHandler {
 
                                     Task::BuiltIn(BuiltInCommand::AddCommand {
                                         trigger: trigger.to_owned(),
-                                        response: response.to_owned(),
+                                        response,
                                     })
                                     .with_meta(meta)
                                     .pipe(iter::once)
