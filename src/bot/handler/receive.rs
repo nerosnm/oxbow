@@ -6,13 +6,20 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, trace};
 use twitch_irc::message::ServerMessage;
 
-use crate::msg::{BuiltInCommand, ImplicitTask, Metadata, Task, WithMeta};
+use crate::{
+    msg::{BuiltInCommand, Help, ImplicitTask, Metadata, Task, WithMeta},
+    parse::{
+        ast::{Command, Help as AstHelp, MetaCommand, PotentialUser, Quote, Search},
+        oxbow::CommandParser,
+    },
+};
 
 pub struct ReceiveHandler {
     pub(in crate::bot) msg_rx: mpsc::UnboundedReceiver<ServerMessage>,
     pub(in crate::bot) task_tx: mpsc::UnboundedSender<(Task, Metadata)>,
     pub(in crate::bot) prefix: char,
     pub(in crate::bot) twitch_name: String,
+    pub(in crate::bot) parser: CommandParser,
 }
 
 impl ReceiveHandler {
@@ -64,111 +71,112 @@ impl ReceiveHandler {
                     sender: msg.sender.login.into(),
                 };
 
-                let mut components = msg.message_text.split(' ');
-
-                if let Some(command) = components.next().and_then(|c| c.strip_prefix(self.prefix)) {
-                    match command {
-                        "command" => {
-                            debug!(?meta, command = "command", "identified command");
-
-                            if let Some(trigger) = components.next() {
-                                let response = components.collect::<Vec<_>>().join(" ");
-
-                                if !response.is_empty() {
-                                    info!(?meta, ?trigger, ?response, "adding command");
-
-                                    Task::BuiltIn(BuiltInCommand::AddCommand {
-                                        trigger: trigger.to_owned(),
-                                        response,
-                                    })
+                if let Some(potential_command) = msg.message_text.strip_prefix(self.prefix) {
+                    if let Ok(parsed) = self.parser.parse(potential_command) {
+                        match parsed {
+                            Command::Quote(Quote::Add {
+                                username,
+                                key,
+                                text,
+                            }) => {
+                                debug!(?meta, command = "add quote", "identified command");
+                                Task::BuiltIn(BuiltInCommand::AddQuote {
+                                    username,
+                                    key,
+                                    text,
+                                })
+                                .with_meta(meta)
+                                .pipe(iter::once)
+                                .collect()
+                            }
+                            Command::Quote(Quote::Get { key }) => {
+                                debug!(?meta, command = "get quote by key", "identified command");
+                                Task::BuiltIn(BuiltInCommand::GetQuote { key })
                                     .with_meta(meta)
                                     .pipe(iter::once)
                                     .collect()
+                            }
+                            Command::Quote(Quote::Random) => {
+                                debug!(?meta, command = "get random quote", "identified command");
+                                Task::BuiltIn(BuiltInCommand::RandomQuote)
+                                    .with_meta(meta)
+                                    .pipe(iter::once)
+                                    .collect()
+                            }
+                            Command::Help(AstHelp::Quote) => {
+                                debug!(
+                                    ?meta,
+                                    command = "command",
+                                    "identified help request for command"
+                                );
+                                Task::Help(Help::Quote)
+                                    .with_meta(meta)
+                                    .pipe(iter::once)
+                                    .collect()
+                            }
+                            Command::Meta(MetaCommand { trigger, response }) => {
+                                debug!(?meta, command = "command", "identified command");
+                                Task::BuiltIn(BuiltInCommand::AddCommand { trigger, response })
+                                    .with_meta(meta)
+                                    .pipe(iter::once)
+                                    .collect()
+                            }
+                            Command::Search(Search::Search) => {
+                                debug!(?meta, command = "search", "identified command");
+                                if &*meta.sender == "nerosnm" {
+                                    Task::BuiltIn(BuiltInCommand::WordSearch)
+                                        .with_meta(meta)
+                                        .pipe(iter::once)
+                                        .collect()
                                 } else {
                                     iter::empty().collect()
                                 }
-                            } else {
-                                iter::empty().collect()
                             }
-                        }
+                            Command::Search(Search::Lower { word, distance }) => {
+                                debug!(?meta, command = "lower", "identified command");
 
-                        "search" => {
-                            debug!(?meta, command = "search", "identified command");
-
-                            if &*meta.sender == "nerosnm" {
-                                Task::BuiltIn(BuiltInCommand::WordSearch)
-                                    .with_meta(meta)
-                                    .pipe(iter::once)
-                                    .collect()
-                            } else {
-                                iter::empty().collect()
-                            }
-                        }
-
-                        "lower" => {
-                            debug!(?meta, command = "lower", "identified command");
-
-                            if &*meta.sender == "nerosnm" {
-                                if let Some(word) = components.next() {
-                                    let distance = components.next().and_then(|d| d.parse().ok());
-
-                                    Task::BuiltIn(BuiltInCommand::WordLower {
-                                        word: word.to_owned(),
-                                        distance,
-                                    })
-                                    .with_meta(meta)
-                                    .pipe(iter::once)
-                                    .collect()
+                                if &*meta.sender == "nerosnm" {
+                                    Task::BuiltIn(BuiltInCommand::WordLower { word, distance })
+                                        .with_meta(meta)
+                                        .pipe(iter::once)
+                                        .collect()
                                 } else {
                                     iter::empty().collect()
                                 }
-                            } else {
-                                iter::empty().collect()
                             }
-                        }
+                            Command::Search(Search::Upper { word, distance }) => {
+                                debug!(?meta, command = "upper", "identified command");
 
-                        "upper" => {
-                            debug!(?meta, command = "upper", "identified command");
-
-                            if &*meta.sender == "nerosnm" {
-                                if let Some(word) = components.next() {
-                                    let distance = components.next().and_then(|d| d.parse().ok());
-
-                                    Task::BuiltIn(BuiltInCommand::WordUpper {
-                                        word: word.to_owned(),
-                                        distance,
-                                    })
-                                    .with_meta(meta)
-                                    .pipe(iter::once)
-                                    .collect()
+                                if &*meta.sender == "nerosnm" {
+                                    Task::BuiltIn(BuiltInCommand::WordUpper { word, distance })
+                                        .with_meta(meta)
+                                        .pipe(iter::once)
+                                        .collect()
                                 } else {
                                     iter::empty().collect()
                                 }
-                            } else {
-                                iter::empty().collect()
                             }
-                        }
+                            Command::Search(Search::Found) => {
+                                debug!(?meta, command = "found", "identified command");
 
-                        "found" => {
-                            debug!(?meta, command = "found", "identified command");
-
-                            if &*meta.sender == "nerosnm" {
-                                Task::BuiltIn(BuiltInCommand::WordFound)
+                                if &*meta.sender == "nerosnm" {
+                                    Task::BuiltIn(BuiltInCommand::WordFound)
+                                        .with_meta(meta)
+                                        .pipe(iter::once)
+                                        .collect()
+                                } else {
+                                    iter::empty().collect()
+                                }
+                            }
+                            Command::PotentialUser(PotentialUser { trigger }) => {
+                                Task::Command { command: trigger }
                                     .with_meta(meta)
                                     .pipe(iter::once)
                                     .collect()
-                            } else {
-                                iter::empty().collect()
                             }
                         }
-
-                        other => Task::Command {
-                            command: other.to_owned(),
-                            body: components.collect::<Vec<_>>().join(" "),
-                        }
-                        .with_meta(meta)
-                        .pipe(iter::once)
-                        .collect(),
+                    } else {
+                        iter::empty().collect()
                     }
                 } else if msg
                     .message_text

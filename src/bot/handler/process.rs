@@ -1,5 +1,7 @@
 use std::{collections::HashMap, iter};
 
+use chrono::Utc;
+use indoc::formatdoc;
 use tap::{Pipe, TapFallible, TapOptional};
 use thiserror::Error;
 use tokio::sync::{
@@ -10,7 +12,8 @@ use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
     commands::{CommandsError, CommandsStore},
-    msg::{BuiltInCommand, ImplicitTask, Metadata, Response, Task, WithMeta},
+    msg::{BuiltInCommand, Help, ImplicitTask, Metadata, Response, Task, WithMeta},
+    quotes::{QuotesError, QuotesStore},
     wordsearch::WordSearch,
 };
 
@@ -18,6 +21,7 @@ pub struct ProcessHandler {
     pub(in crate::bot) task_rx: mpsc::UnboundedReceiver<(Task, Metadata)>,
     pub(in crate::bot) res_tx: broadcast::Sender<(Response, Metadata)>,
     pub(in crate::bot) commands: CommandsStore,
+    pub(in crate::bot) quotes: QuotesStore,
     pub(in crate::bot) prefix: char,
     pub(in crate::bot) word_searches: HashMap<String, WordSearch>,
 }
@@ -61,8 +65,8 @@ impl ProcessHandler {
         meta: Metadata,
     ) -> Result<Vec<(Response, Metadata)>, ProcessError> {
         let responses = match task {
-            Task::Command { command, body } => {
-                info!(?meta, ?command, ?body);
+            Task::Command { command } => {
+                info!(?meta, ?command, "user-defined command task");
 
                 self.commands
                     .get_command(&meta.channel, &command)?
@@ -102,6 +106,89 @@ impl ProcessHandler {
                 .with_meta(meta)
                 .pipe(iter::once)
                 .collect()
+            }
+            Task::Help(Help::Quote) => {
+                info!(?meta, "quote help task");
+
+                Response::Say {
+                    message: formatdoc!(
+                        "
+                        @{sender} Use {prefix}quote @username \"text of quote\" or {prefix}quote \
+                        @username #key \"text of quote\" to add a quote. Get a quote by key with \
+                        {prefix}quote #key, or a random quote with {prefix}quote.
+                        ",
+                        sender = meta.sender,
+                        prefix = self.prefix,
+                    ),
+                }
+                .with_meta(meta)
+                .pipe(iter::once)
+                .collect()
+            }
+            Task::BuiltIn(BuiltInCommand::AddQuote {
+                username,
+                key,
+                text,
+            }) => {
+                info!(?meta, ?username, ?key, ?text, "add quote task");
+
+                let when = Utc::now();
+                let date_str = when.format("%d %b %Y");
+                let time_str = when.format("%H:%M");
+
+                if let Some(key) = key {
+                    self.quotes
+                        .add_quote_keyed(&meta.channel, &username, &key, &text, when)?;
+
+                    Response::Say {
+                        message: format!(
+                            "Quote #{key} added from @{username} on {date_str} at {time_str} UTC",
+                        ),
+                    }
+                    .with_meta(meta)
+                    .pipe(iter::once)
+                    .collect()
+                } else {
+                    self.quotes
+                        .add_quote_unkeyed(&meta.channel, &username, &text, when)?;
+
+                    Response::Say {
+                        message: format!(
+                            "Quote added from @{username} on {date_str} at {time_str} UTC",
+                        ),
+                    }
+                    .with_meta(meta)
+                    .pipe(iter::once)
+                    .collect()
+                }
+            }
+            Task::BuiltIn(BuiltInCommand::GetQuote { key }) => {
+                info!(?meta, ?key, "get quote by key task");
+
+                if let Some(quote) = self.quotes.get_quote_keyed(&meta.channel, &key)? {
+                    Response::Say {
+                        message: format!("{}", quote),
+                    }
+                    .with_meta(meta)
+                    .pipe(iter::once)
+                    .collect()
+                } else {
+                    iter::empty().collect()
+                }
+            }
+            Task::BuiltIn(BuiltInCommand::RandomQuote) => {
+                info!(?meta, "get random quote task");
+
+                if let Some(quote) = self.quotes.get_quote_random(&meta.channel)? {
+                    Response::Say {
+                        message: format!("{}", quote),
+                    }
+                    .with_meta(meta)
+                    .pipe(iter::once)
+                    .collect()
+                } else {
+                    iter::empty().collect()
+                }
             }
             Task::BuiltIn(BuiltInCommand::WordSearch) => {
                 info!(?meta, "word search task");
@@ -215,6 +302,9 @@ enum ProcessError {
 
     #[error("command error: {0}")]
     CommandError(#[from] CommandsError),
+
+    #[error("quote error: {0}")]
+    QuoteError(#[from] QuotesError),
 
     #[error("failed to send response: {0}")]
     SendResponse(#[from] SendError<(Response, Metadata)>),

@@ -37,11 +37,10 @@ pub enum Task {
     Command {
         /// The command, not including the prefix.
         command: String,
-        /// The rest of the message that triggered the command.
-        body: String,
     },
     Implicit(ImplicitTask),
     BuiltIn(BuiltInCommand),
+    Help(Help),
 }
 
 impl WithMeta<Metadata> for Task {}
@@ -64,6 +63,22 @@ pub enum BuiltInCommand {
         /// The response that should be sent in a message.
         response: String,
     },
+    /// Add a new quote to the database.
+    AddQuote {
+        /// The username of the user being quoted.
+        username: String,
+        /// The key, if provided, for retrieval of this quote.
+        key: Option<String>,
+        /// The quote itself.
+        text: String,
+    },
+    /// Get a quote by its key.
+    GetQuote {
+        /// The key of the quote to get.
+        key: String,
+    },
+    /// Get a random quote.
+    RandomQuote,
     /// Start a word search run.
     WordSearch,
     /// Set the lower bound after a guess.
@@ -78,6 +93,12 @@ pub enum BuiltInCommand {
     },
     /// End a word search run.
     WordFound,
+}
+
+#[derive(Debug, Clone)]
+pub enum Help {
+    /// Respond with help text for the quote command.
+    Quote,
 }
 
 /// Commands to respond in some way to an action, such as by replying with a

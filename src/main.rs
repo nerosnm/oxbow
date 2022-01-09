@@ -1,7 +1,7 @@
 use clap::Clap;
 use eyre::Result;
 use opts::Opts;
-use oxbow::Bot;
+use oxbow::bot::Bot;
 use surf::Client as SurfClient;
 use twitch_api2::TwitchClient;
 

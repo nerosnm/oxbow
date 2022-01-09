@@ -6,7 +6,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
 use tracing::error;
 
-use crate::Bot;
+use crate::bot::Bot;
 
 /// The number one single when Twitch user @NinthRoads was born was Bob The
 /// Builder.

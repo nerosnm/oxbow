@@ -15,7 +15,10 @@ pub use self::{
     builder::{BotBuilder, BotTheBuilder},
     handler::{ProcessHandler, ReceiveHandler, RespondHandler},
 };
-use crate::{auth::SQLiteTokenStore, commands::CommandsStore};
+use crate::{
+    auth::SQLiteTokenStore, commands::CommandsStore, parse::oxbow::CommandParser,
+    quotes::QuotesStore,
+};
 
 /// The main `oxbow` bot entry point.
 pub struct Bot {
@@ -84,6 +87,7 @@ impl Bot {
                 task_tx,
                 prefix,
                 twitch_name,
+                parser: CommandParser::new(),
             };
 
             handler.receive_loop().await;
@@ -93,12 +97,14 @@ impl Bot {
         // Responses if necessary.
         let res_tx = res_tx_orig.clone();
         let commands = CommandsStore::new(self.conn_pool.clone());
+        let quotes = QuotesStore::new(self.conn_pool.clone());
         let prefix = self.prefix;
         let process_loop = tokio::spawn(async move {
             let mut handler = ProcessHandler {
                 task_rx,
                 res_tx,
                 commands,
+                quotes,
                 prefix,
                 word_searches: HashMap::new(),
             };

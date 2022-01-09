@@ -24,7 +24,7 @@ where
 {
     /// Loops over incoming [`Response`]s and acts on them, such as by sending
     /// messages in a channel.
-    #[instrument(skip(self))]
+    #[instrument(skip(self), fields(channel = %self.channel))]
     pub async fn respond_loop(&mut self) {
         debug!("starting");
 
@@ -46,7 +46,7 @@ where
 
     /// Gets an incoming [`Response`] and acts on it, such as by sending a
     /// message in a channel.
-    #[instrument(skip(self))]
+    #[instrument(skip(self), fields(channel = %self.channel))]
     async fn respond(&mut self) -> Result<(), RespondError<T, L>> {
         trace!("waiting for response message");
 
@@ -59,7 +59,7 @@ where
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), fields(channel = %self.channel))]
     async fn send_response(
         &mut self,
         res: Response,

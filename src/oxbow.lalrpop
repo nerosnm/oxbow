@@ -1,0 +1,83 @@
+use std::str::FromStr;
+
+use crate::parse::ast::*;
+
+grammar;
+
+match {
+    "quote" => CMD_QUOTE,
+
+    "command" => CMD_COMMAND,
+
+    "search" => CMD_SEARCH,
+    "lower" => CMD_LOWER,
+    "upper" => CMD_UPPER,
+    "found" => CMD_FOUND,
+
+    "help" => CMD_HELP,
+
+    r"[a-z]+" => ALPHA,
+    r"[0-9]+" => POS_NUM,
+
+    r#""[^"]+""# => QUOTED,
+    r"#[a-zA-Z0-9_\-]+" => KEY,
+    r"@[a-zA-Z0-9][a-zA-Z0-9_]{2,25}" => USERNAME,
+}
+
+pub Command: Command = {
+    <MetaCommand> => Command::Meta(<>),
+    <Quote> => Command::Quote(<>),
+    <Search> => Command::Search(<>),
+    <PotentialUser> => Command::PotentialUser(<>),
+    <Help> => Command::Help(<>),
+}
+
+pub Quote: Quote = {
+    CMD_QUOTE <username:Username> <key:Key?> <text:Quoted> => Quote::Add {
+        username,
+        key,
+        text,
+    },
+    CMD_QUOTE <username:Username> <text:Quoted> <key:Key> => Quote::Add {
+        username,
+        key: Some(key),
+        text,
+    },
+    CMD_QUOTE <key:Key> => Quote::Get { <> },
+    CMD_QUOTE => Quote::Random,
+}
+
+pub MetaCommand: MetaCommand = {
+    CMD_COMMAND <trigger:Trigger> <response:Quoted> => MetaCommand {
+        trigger,
+        response,
+    },
+}
+
+pub Search: Search = {
+    CMD_SEARCH => Search::Search,
+    CMD_LOWER <word:AlphaWord> <distance:PosNum?> => Search::Lower {
+        word,
+        distance,
+    },
+    CMD_UPPER <word:AlphaWord> <distance:PosNum?> => Search::Lower {
+        word,
+        distance,
+    },
+    CMD_FOUND => Search::Found,
+}
+
+pub PotentialUser: PotentialUser = <trigger:Trigger> => PotentialUser { <> };
+
+pub Help: Help = {
+    CMD_HELP CMD_QUOTE => Help::Quote,
+}
+
+AlphaWord: String = ALPHA => <>.to_string();
+PosNum: usize = POS_NUM => usize::from_str(<>).unwrap();
+
+Trigger: String = ALPHA => <>.to_string();
+
+Quoted: String = QUOTED => <>[1..(<>.len() - 1)].to_string();
+Key: String = KEY => <>[1..].to_string();
+Username: String = USERNAME => <>[1..].to_string();
