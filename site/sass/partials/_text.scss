@@ -1,0 +1,65 @@
+body {
+  font-family: $base-font-family;
+  font-weight: $base-font-weight;
+  font-size: $base-font-size;
+  line-height: $base-line-height;
+
+  color: $text-color;
+  background-color: $background-color;
+}
+
+strong {
+  font-weight: $strong-font-weight;
+}
+
+em {
+  &::before {
+    content: '_';
+  }
+
+  &::after {
+    content: '_';
+  }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: $header-color;
+  font-weight: $header-font-weight;
+}
+
+h1 { font-size: 2em; }
+h2 { font-size: 1.5em; }
+h3 { font-size: 1.3em; }
+h4 { font-size: 1em; }
+h5 { font-size: 0.8em; }
+h6 { font-size: 0.7em; }
+
+blockquote {
+  color: $muted-color;
+}
+
+a {
+  text-decoration: none;
+  color: $accent-color;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.sitetitle {
+  font-size: 3em;
+
+  a {
+    color: $header-color;
+  }
+}
+
+.pagetitle {
+  font-size: 24pt;
+}

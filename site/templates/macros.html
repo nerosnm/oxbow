@@ -1,0 +1,38 @@
+{% macro menu(base_url) %}
+<ul class="menu">
+  <li class="menuitem">
+    <a href="{{base_url}}">Home</a>
+  </li>
+  <li class="menuitem">
+    <a href="{{base_url}}/commands">Commands</a>
+  </li>
+  <li class="menuitem">
+    <a href="https://github.com/nerosnm/oxbow">GitHub</a>
+  </li>
+</umacrosl>
+{% endmacro menu %}
+
+{% macro frontmatter(classes, base_url, slug, date, word_count, read_time, tags) %}
+<ul class="frontmatter {{classes}}" id="{{slug}}-frontmatter">
+  {% if date %}
+  <li>
+    <time class="posttime" datetime="{{date}}">{{ date | date(format="%B %d, %Y") }}</time>
+  </li>
+  {% endif %}
+  <li> {{word_count}} words </li>
+  <li> {{read_time}} min </li>
+  {% if tags %}
+  {% for tag in tags %}
+  <li> <a href="{{base_url}}/tags/{{tag | slugify}}">{{tag}}</a> </li>
+  {% endfor %}
+  {% endif %}
+</ul>
+{% endmacro frontmatter %}
+
+{% macro anchor(id, link, level) %}
+<div class="anchor-container">
+  <a class="anchor" href="{{ link }}" aria-label="Anchor link for: {{ id }}">
+    {% for l in range(start=0, end=level, step_by=1) %}#{% endfor %}
+  </a>
+</div>
+{% endmacro anchor %}

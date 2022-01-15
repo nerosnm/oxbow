@@ -1,0 +1,118 @@
+html {
+  width: calc(100vw - 34px);
+}
+
+body {
+  max-width: $max-width;
+  margin: 40px auto;
+  padding: 0 $unit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+ul,
+ol,
+pre {
+  margin: $unit 0;
+}
+
+ul,
+ol {
+  margin: 0 (2 * $unit);
+
+  li {
+    margin: (0.25 * $unit) 0;
+  }
+}
+
+ul {
+  list-style-type: circle;
+}
+
+ol {
+  list-style-type: decimal;
+}
+
+code {
+  padding: 2px 5px;
+  background: $code-background-color;
+  border-radius: 3px;
+
+  pre > & {
+    padding: 0;
+    background: #fff;
+    border-radius: 0;
+  }
+}
+
+pre {
+  padding: $unit;
+}
+
+blockquote {
+  & > p {
+    margin: 0;
+    padding: $unit;
+    border: 1px dotted #d0d0d0;
+  }
+}
+
+pre, blockquote > p {
+  border-radius: 5px;
+}
+
+.menu,
+.frontmatter {
+  margin: $unit 0;
+}
+
+.menu > li,
+.frontmatter > li {
+  display: inline;
+
+  &::after {
+    content: "~";
+  }
+
+  &:last-child::after {
+    content: "";
+  }
+}
+
+nav.pagination {
+  margin: 12px auto;
+  padding: 12px 0 24px 0;
+  border-top: 1px solid $muted-color;
+  display: block;
+  position: relative;
+
+  >span.prev {
+    display: block;
+    float: left;
+  }
+
+  >span.next {
+    display: block;
+    float: right;
+  }
+}
+
+footer {
+  text-align: center;
+  color: $muted-color;
+}
+
+.anchor-container {
+  position: relative;
+}
+
+.anchor {
+  position: absolute;
+  transform: translateX(-100%);
+  padding-right: $unit;
+}

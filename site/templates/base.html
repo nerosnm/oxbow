@@ -1,0 +1,53 @@
+{% import "macros.html" as macros %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% block head %}
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    
+      {% block title %}
+        {% if page.title %}
+          <title>{{ page.title }} | {{ config.title }}</title>
+        {% else %}
+          <title>{{ config.title }}</title>
+        {% endif %}
+      {% endblock %}
+    
+      <!-- {% block favicon %} -->
+      <!--   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"> -->
+      <!--   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"> -->
+      <!--   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"> -->
+      <!--   <link rel="manifest" href="/site.webmanifest"> -->
+      <!-- {% endblock favicon %} -->
+    
+      {% block css %}
+        <link rel="stylesheet" href="{{ config.base_url }}/cacti.css">
+        <link href="https://fonts.googleapis.com/css?family=Inconsolata&display=swap" rel="stylesheet">
+      {% endblock css %}
+    {% endblock head %}
+  </head>
+  
+  <body>
+    <header>
+      {% block header %}
+        <h1 id="sitetitle" class="sitetitle"><a href="{{config.base_url}}">{{config.title}}</a></h1>
+  
+        <nav id="menu">
+          {% block menu %}
+            {{
+              macros::menu(base_url=config.base_url)
+            }}
+          {% endblock menu %}
+        </nav>
+      {% endblock header %}
+    </header>
+  
+    {% block content %}
+    {% endblock content %}
+    
+    {% block pagination %}
+    {% endblock pagination %}
+  </body>
+</html>
