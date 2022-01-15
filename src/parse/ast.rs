@@ -47,5 +47,6 @@ pub struct PotentialUser {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Help {
+    General,
     Quote,
 }

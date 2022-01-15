@@ -103,10 +103,17 @@ impl ReceiveHandler {
                                     .pipe(iter::once)
                                     .collect()
                             }
+                            Command::Help(AstHelp::General) => {
+                                debug!(?meta, "identified general help request");
+                                Task::Help(Help::General)
+                                    .with_meta(meta)
+                                    .pipe(iter::once)
+                                    .collect()
+                            }
                             Command::Help(AstHelp::Quote) => {
                                 debug!(
                                     ?meta,
-                                    command = "command",
+                                    command = "quote",
                                     "identified help request for command"
                                 );
                                 Task::Help(Help::Quote)

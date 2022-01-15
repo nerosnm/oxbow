@@ -70,6 +70,7 @@ pub Search: Search = {
 pub PotentialUser: PotentialUser = <trigger:Trigger> => PotentialUser { <> };
 
 pub Help: Help = {
+    CMD_HELP => Help::General,
     CMD_HELP CMD_QUOTE => Help::Quote,
 }
 

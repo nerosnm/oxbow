@@ -107,15 +107,28 @@ impl ProcessHandler {
                 .pipe(iter::once)
                 .collect()
             }
+            Task::Help(Help::General) => {
+                info!(?meta, "general help task");
+
+                Response::Say {
+                    message: formatdoc!(
+                        "
+                        @{sender} See oxbow.cacti.dev/commands for help
+                        ",
+                        sender = meta.sender,
+                    ),
+                }
+                .with_meta(meta)
+                .pipe(iter::once)
+                .collect()
+            }
             Task::Help(Help::Quote) => {
                 info!(?meta, "quote help task");
 
                 Response::Say {
                     message: formatdoc!(
                         "
-                        @{sender} Use {prefix}quote @username \"text of quote\" or {prefix}quote \
-                        @username #key \"text of quote\" to add a quote. Get a quote by key with \
-                        {prefix}quote #key, or a random quote with {prefix}quote.
+                        @{sender} See oxbow.cacti.dev/commands#quotes for help with {prefix}quote
                         ",
                         sender = meta.sender,
                         prefix = self.prefix,

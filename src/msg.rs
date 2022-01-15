@@ -97,6 +97,8 @@ pub enum BuiltInCommand {
 
 #[derive(Debug, Clone)]
 pub enum Help {
+    /// Respond with general help text.
+    General,
     /// Respond with help text for the quote command.
     Quote,
 }
