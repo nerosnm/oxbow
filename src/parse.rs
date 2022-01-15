@@ -4,6 +4,9 @@ pub mod ast;
 pub use generated::oxbow;
 
 mod generated {
+    #![allow(clippy::all)]
+    #![allow(unused_extern_crates)]
+    #![allow(missing_docs)]
     #![allow(dead_code)]
 
     use lalrpop_util::lalrpop_mod;
