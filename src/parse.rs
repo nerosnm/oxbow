@@ -21,21 +21,9 @@ mod tests {
     use super::oxbow::QuoteParser;
 
     #[test]
-    fn quote_help() {
-        let input = "quote";
-        let expected = Quote::Help;
-
-        let actual = QuoteParser::new()
-            .parse(input)
-            .expect("valid input parses successfully");
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
     fn quote_simple() {
         let input = r#"quote @nerosnm "hi hello there""#;
-        let expected = Quote::Invoke {
+        let expected = Quote::Add {
             username: "nerosnm".into(),
             key: None,
             text: r#"hi hello there"#.into(),
@@ -51,7 +39,7 @@ mod tests {
     #[test]
     fn quote_tricky() {
         let input = r#"quote @nerosnm "i quote @nerosnm as having #said: 'hi'""#;
-        let expected = Quote::Invoke {
+        let expected = Quote::Add {
             username: "nerosnm".into(),
             key: None,
             text: r#"i quote @nerosnm as having #said: 'hi'"#.into(),
@@ -67,7 +55,7 @@ mod tests {
     #[test]
     fn quote_keyword_start() {
         let input = r#"quote @nerosnm #test-quote "this is a test quote""#;
-        let expected = Quote::Invoke {
+        let expected = Quote::Add {
             username: "nerosnm".into(),
             key: Some("test-quote".into()),
             text: r#"this is a test quote"#.into(),
@@ -83,7 +71,7 @@ mod tests {
     #[test]
     fn quote_keyword_end() {
         let input = r#"quote @nerosnm "this is a test quote" #testquote"#;
-        let expected = Quote::Invoke {
+        let expected = Quote::Add {
             username: "nerosnm".into(),
             key: Some("testquote".into()),
             text: r#"this is a test quote"#.into(),
