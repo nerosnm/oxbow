@@ -35,22 +35,26 @@
     in
     rec
     {
-      packages.oxbow = naersk-lib.buildPackage {
-        pname = "oxbow";
-        root = ./.;
-        nativeBuildInputs = with pkgs; [
-          clang
-          openssl
-          pkg-config
-          sqlite
-        ];
-      };
       defaultPackage = packages.oxbow;
+      packages = {
+        oxbow = naersk-lib.buildPackage {
+          pname = "oxbow";
+          root = ./.;
+          nativeBuildInputs = with pkgs; [
+            clang
+            openssl
+            pkg-config
+            sqlite
+          ];
+        };
 
+        oxbow-cacti-dev = pkgs.callPackage ./site/default.nix { };
+      };
+
+      defaultApp = apps.oxbow;
       apps.oxbow = flake-utils.lib.mkApp {
         drv = packages.oxbow;
       };
-      defaultApp = apps.oxbow;
 
       devShell = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
@@ -59,6 +63,7 @@
           pkg-config
           rust-toolchain
           sqlite
+          zola
         ] ++ format-pkgs;
       };
 
