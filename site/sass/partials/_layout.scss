@@ -1,5 +1,6 @@
 html {
-  width: calc(100vw - 34px);
+  overflow-x: hidden;
+  margin-right: calc(-1 * (100vw - 100%));
 }
 
 body {
@@ -51,6 +52,7 @@ code {
 }
 
 pre {
+  overflow-x: auto;
   padding: $unit;
 }
 
