@@ -16,8 +16,8 @@ pub use self::{
     handler::{ProcessHandler, ReceiveHandler, RespondHandler},
 };
 use crate::{
-    auth::SQLiteTokenStore, commands::CommandsStore, parse::oxbow::CommandParser,
-    quotes::QuotesStore,
+    parse::oxbow::CommandParser,
+    store::{commands::CommandsStore, quotes::QuotesStore, token::SQLiteTokenStore},
 };
 
 /// The main `oxbow` bot entry point.

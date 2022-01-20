@@ -11,9 +11,11 @@ use tokio::sync::{
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
-    commands::{CommandsError, CommandsStore},
     msg::{BuiltInCommand, Help, ImplicitTask, Metadata, Response, Task, WithMeta},
-    quotes::{QuotesError, QuotesStore},
+    store::{
+        commands::{CommandsError, CommandsStore},
+        quotes::{QuotesError, QuotesStore},
+    },
     wordsearch::WordSearch,
 };
 
