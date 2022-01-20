@@ -2,8 +2,6 @@ use clap::Clap;
 use eyre::Result;
 use opts::Opts;
 use oxbow::bot::Bot;
-use surf::Client as SurfClient;
-use twitch_api2::TwitchClient;
 
 mod opts;
 
@@ -26,8 +24,6 @@ async fn main() -> Result<()> {
     }
 
     bot_the_builder.build()?.run().await?;
-
-    let _client = TwitchClient::<'_, SurfClient>::new();
 
     Ok(())
 }
