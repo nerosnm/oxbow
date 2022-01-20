@@ -2,18 +2,17 @@
 name = "oxbow"
 version = "0.1.0"
 authors = ["Søren Mortensen <soren@neros.dev>"]
-edition = "2018"
+edition = "2021"
 publish = false
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = "0.1.52"
 chrono = "0.4.19"
 clap = "3.0.0-beta.2"
 dotenv = "0.15.0"
 eyre = "0.6.5"
 indoc = "1.0.3"
-lalrpop-util = "0.19.6"
 lazy_static = "1.4.0"
 r2d2 = "0.8.9"
 r2d2_sqlite = "0.18.0"
@@ -24,6 +23,11 @@ tap = "1.0.1"
 thiserror = "1.0.24"
 tracing = "0.1.25"
 tracing-subscriber = "0.2.17"
+futures = "0.3.19"
+
+[dependencies.lalrpop-util]
+version =  "0.19.6"
+features = ["lexer"]
 
 [dependencies.refinery]
 git = "https://github.com/rust-db/refinery"

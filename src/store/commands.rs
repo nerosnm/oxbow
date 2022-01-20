@@ -77,9 +77,8 @@ mod tests {
 
     use tempfile::{tempdir, TempDir};
 
-    use crate::store::migrations;
-
     use super::*;
+    use crate::store::migrations;
 
     fn storage() -> (TempDir, CommandsStore) {
         let db_dir = tempdir().expect("creating a temporary directory should succeed");

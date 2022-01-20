@@ -1,15 +1,17 @@
 use std::{collections::HashMap, iter};
 
+use async_trait::async_trait;
 use chrono::Utc;
 use indoc::formatdoc;
-use tap::{Pipe, TapFallible, TapOptional};
+use tap::{Pipe, TapOptional};
 use thiserror::Error;
 use tokio::sync::{
     broadcast::{self, error::SendError},
     mpsc,
 };
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, warn};
 
+use super::Handler;
 use crate::{
     msg::{BuiltInCommand, Help, ImplicitTask, Metadata, Response, Task, WithMeta},
     store::{
@@ -20,52 +22,52 @@ use crate::{
 };
 
 pub struct ProcessHandler {
-    pub(in crate::bot) task_rx: mpsc::UnboundedReceiver<(Task, Metadata)>,
-    pub(in crate::bot) res_tx: broadcast::Sender<(Response, Metadata)>,
-    pub(in crate::bot) commands: CommandsStore,
-    pub(in crate::bot) quotes: QuotesStore,
-    pub(in crate::bot) prefix: char,
-    pub(in crate::bot) word_searches: HashMap<String, WordSearch>,
+    task_rx: mpsc::UnboundedReceiver<(Task, Metadata)>,
+    res_tx: broadcast::Sender<(Response, Metadata)>,
+    commands: CommandsStore,
+    quotes: QuotesStore,
+    prefix: char,
+    word_searches: HashMap<String, WordSearch>,
 }
 
-impl ProcessHandler {
-    /// Loops over incoming [`Task`]s, acts on them, and if necessary, sends
-    /// [`Response`]s in `res_tx`.
-    #[instrument(skip(self))]
-    pub async fn process_loop(&mut self) {
-        debug!("starting");
+#[async_trait]
+impl Handler for ProcessHandler {
+    type Input = (Task, Metadata);
+    type Output = (Response, Metadata);
+    type Aux = (
+        CommandsStore,
+        QuotesStore,
+        char,
+        HashMap<String, WordSearch>,
+    );
+    type Error = ProcessError;
 
-        loop {
-            match self.process().await {
-                Ok(()) => {}
-                Err(err) => error!(%err),
-            }
+    type Receiver = mpsc::UnboundedReceiver<Self::Input>;
+    type Sender = broadcast::Sender<(Response, Metadata)>;
+
+    async fn new(task_rx: Self::Receiver, res_tx: Self::Sender, aux: Self::Aux) -> Self {
+        let (commands, quotes, prefix, word_searches) = aux;
+        Self {
+            task_rx,
+            res_tx,
+            commands,
+            quotes,
+            prefix,
+            word_searches,
         }
     }
 
-    /// Gets an incoming [`Task`], acts on it, and if necessary, sends
-    /// [`Response`]s in `res_tx`.
-    #[instrument(skip(self))]
-    async fn process(&mut self) -> Result<(), ProcessError> {
-        trace!("waiting for task message");
+    fn receiver(&mut self) -> &mut Self::Receiver {
+        &mut self.task_rx
+    }
 
-        let (task, meta) = self.task_rx.recv().await.ok_or(ProcessError::ReceiveTask)?;
-
-        trace!("received task message");
-
-        for (response, meta) in self.handle_task(task, meta).await? {
-            self.send_response(response, meta).await?;
-        }
-
-        Ok(())
+    fn sender(&mut self) -> &mut Self::Sender {
+        &mut self.res_tx
     }
 
     #[instrument(skip(self))]
-    async fn handle_task(
-        &mut self,
-        task: Task,
-        meta: Metadata,
-    ) -> Result<Vec<(Response, Metadata)>, ProcessError> {
+    async fn process(&mut self, input: Self::Input) -> Result<Vec<Self::Output>, Self::Error> {
+        let (task, meta) = input;
         let responses = match task {
             Task::Command { command } => {
                 info!(?meta, ?command, "user-defined command task");
@@ -296,22 +298,10 @@ impl ProcessHandler {
 
         Ok(responses)
     }
-
-    #[instrument(skip(self))]
-    async fn send_response(&self, response: Response, meta: Metadata) -> Result<(), ProcessError> {
-        debug!(?meta, ?response, "sending response");
-
-        let _ = self
-            .res_tx
-            .send(response.with_cloned_meta(&meta))
-            .tap_err(|e| error!(?meta, error = ?e, "failed to send response message"))?;
-
-        Ok(())
-    }
 }
 
 #[derive(Debug, Error)]
-enum ProcessError {
+pub enum ProcessError {
     #[error("failed to receive task")]
     ReceiveTask,
 
@@ -323,4 +313,10 @@ enum ProcessError {
 
     #[error("failed to send response: {0}")]
     SendResponse(#[from] SendError<(Response, Metadata)>),
+}
+
+impl From<()> for ProcessError {
+    fn from(_: ()) -> Self {
+        Self::ReceiveTask
+    }
 }

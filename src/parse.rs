@@ -9,16 +9,13 @@ mod generated {
     #![allow(missing_docs)]
     #![allow(dead_code)]
 
-    use lalrpop_util::lalrpop_mod;
-
     lalrpop_mod!(pub oxbow);
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::parse::ast::Quote;
-
     use super::oxbow::QuoteParser;
+    use crate::parse::ast::Quote;
 
     #[test]
     fn quote_simple() {

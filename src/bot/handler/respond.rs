@@ -1,10 +1,12 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
 use thiserror::Error;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, instrument, trace};
+use tracing::{debug, error, info};
 use twitch_irc::{login::LoginCredentials, Transport, TwitchIRCClient};
 
+use super::Handler;
 use crate::msg::{Metadata, Response};
 
 pub struct RespondHandler<T, L>
@@ -12,73 +14,69 @@ where
     T: Transport,
     L: LoginCredentials,
 {
-    pub(in crate::bot) res_rx: broadcast::Receiver<(Response, Metadata)>,
-    pub(in crate::bot) client: TwitchIRCClient<T, L>,
-    pub(in crate::bot) channel: String,
+    res_rx: broadcast::Receiver<(Response, Metadata)>,
+    client: TwitchIRCClient<T, L>,
+    channel: String,
 }
 
-impl<T, L> RespondHandler<T, L>
+#[async_trait]
+impl<T, L> Handler for RespondHandler<T, L>
 where
     T: Transport,
     L: LoginCredentials,
 {
-    /// Loops over incoming [`Response`]s and acts on them, such as by sending
-    /// messages in a channel.
-    #[instrument(skip(self), fields(channel = %self.channel))]
-    pub async fn respond_loop(&mut self) {
+    type Input = (Response, Metadata);
+    type Output = (String, String);
+    type Aux = String;
+    type Error = RespondError<T, L>;
+
+    type Receiver = broadcast::Receiver<(Response, Metadata)>;
+    type Sender = TwitchIRCClient<T, L>;
+
+    async fn new(res_rx: Self::Receiver, client: Self::Sender, channel: Self::Aux) -> Self {
         debug!("starting");
 
-        self.client.join(self.channel.clone());
-
-        while self.client.get_channel_status(self.channel.clone()).await != (true, true) {
+        client.join(channel.clone());
+        while client.get_channel_status(channel.clone()).await != (true, true) {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
-        info!("joined channel");
+        info!(?channel, "joined channel",);
 
-        loop {
-            match self.respond().await {
-                Ok(()) => {}
-                Err(err) => error!(%err),
-            }
+        Self {
+            res_rx,
+            client,
+            channel,
         }
     }
 
-    /// Gets an incoming [`Response`] and acts on it, such as by sending a
-    /// message in a channel.
-    #[instrument(skip(self), fields(channel = %self.channel))]
-    async fn respond(&mut self) -> Result<(), RespondError<T, L>> {
-        trace!("waiting for response message");
-
-        let (res, meta) = self.res_rx.recv().await?;
-
-        if *meta.channel == self.channel {
-            self.send_response(res, meta).await?;
-        }
-
-        Ok(())
+    fn receiver(&mut self) -> &mut Self::Receiver {
+        &mut self.res_rx
     }
 
-    #[instrument(skip(self), fields(channel = %self.channel))]
-    async fn send_response(
+    fn sender(&mut self) -> &mut Self::Sender {
+        &mut self.client
+    }
+
+    async fn process(
         &mut self,
-        res: Response,
-        meta: Metadata,
-    ) -> Result<(), RespondError<T, L>> {
-        match res {
-            Response::Say { message } => {
-                info!(?meta, ?message, "sending response");
-
-                self.client.say(self.channel.clone(), message).await?;
+        (res, meta): Self::Input,
+    ) -> Result<Vec<Self::Output>, Self::Error> {
+        if *meta.channel == self.channel {
+            match res {
+                Response::Say { message } => {
+                    info!(?meta, ?message, "sending response");
+                    Ok(vec![(self.channel.clone(), message)])
+                }
             }
+        } else {
+            Ok(vec![])
         }
-
-        Ok(())
     }
 }
 
 #[derive(Debug, Error)]
-enum RespondError<T, L>
+pub enum RespondError<T, L>
 where
     T: Transport,
     L: LoginCredentials,

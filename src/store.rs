@@ -1,4 +1,5 @@
-//! Persistent storage of data, including custom commands, quotes, and authentication tokens.
+//! Persistent storage of data, including custom commands, quotes, and
+//! authentication tokens.
 
 use refinery::embed_migrations;
 use rusqlite::Connection;

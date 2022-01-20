@@ -27,7 +27,8 @@ pub struct BotBuilder {
 }
 
 impl BotBuilder {
-    /// Set the client ID and client secret this bot will use for authentication with Twitch.
+    /// Set the client ID and client secret this bot will use for authentication
+    /// with Twitch.
     pub fn twitch_credentials<S1: ToString, S2: ToString>(
         mut self,
         client_id: S1,
@@ -95,8 +96,9 @@ impl BotBuilder {
 
         let conn_pool = Pool::new(manager)?;
 
-        // Now we need to run migrations before we relinquish control of the bot, because we want
-        // to be sure that they get run before anything else touches the database.
+        // Now we need to run migrations before we relinquish control of the bot,
+        // because we want to be sure that they get run before anything else
+        // touches the database.
         let mut conn = conn_pool.get()?;
         let report = migrations::runner().run(conn.deref_mut())?;
         debug!(?report);

@@ -151,7 +151,8 @@ impl TokenStorage for TokenStore {
     }
 }
 
-/// Errors that could arise while loading stored tokens from a database using [`TokenStore`].
+/// Errors that could arise while loading stored tokens from a database using
+/// [`TokenStore`].
 #[derive(Debug, Error)]
 pub enum LoadError {
     #[error("no stored token found")]
@@ -167,7 +168,8 @@ pub enum LoadError {
     R2d2(#[from] r2d2::Error),
 }
 
-/// Errors that could arise while storing tokens in a database using [`TokenStore`].
+/// Errors that could arise while storing tokens in a database using
+/// [`TokenStore`].
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("rusqlite error: {0}")]
@@ -185,9 +187,8 @@ mod tests {
     use tempfile::{tempdir, TempDir};
     use twitch_irc::login::TokenStorage;
 
-    use crate::store::migrations;
-
     use super::*;
+    use crate::store::migrations;
 
     fn storage() -> (TempDir, TokenStore) {
         let db_dir = tempdir().expect("creating a temporary directory should succeed");
@@ -261,7 +262,8 @@ mod tests {
         );
     }
 
-    /// Test that a [`TokenStore`] correctly reports whether a token is currently stored.
+    /// Test that a [`TokenStore`] correctly reports whether a token is
+    /// currently stored.
     #[tokio::test]
     async fn check_token_exists() {
         let (_db_dir, mut storage) = storage();
@@ -286,8 +288,8 @@ mod tests {
         );
     }
 
-    /// Test that updating a stored token in a [`TokenStore`] succeeds and all of the values are
-    /// correctly changed to their new values.
+    /// Test that updating a stored token in a [`TokenStore`] succeeds and all
+    /// of the values are correctly changed to their new values.
     #[tokio::test]
     async fn update_token() {
         let (_db_dir, mut storage) = storage();

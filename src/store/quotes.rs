@@ -103,10 +103,11 @@ impl QuotesStore {
                 },
                 _,
             )) => {
-                // If we've failed due to a constraint violation here, it could either be because
-                // the key is already used for another quote or because the text of the quote
-                // already exists for this user. We'll run a query for any quotes with the provided
-                // key to determine which one it is.
+                // If we've failed due to a constraint violation here, it could either be
+                // because the key is already used for another quote or because
+                // the text of the quote already exists for this user. We'll run
+                // a query for any quotes with the provided key to determine
+                // which one it is.
 
                 let mut key_stmt = conn.prepare(
                     r#"

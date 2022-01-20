@@ -16,6 +16,7 @@ use twitch_irc::{
 use twitch_oauth2_auth_flow::AuthFlowError;
 
 use crate::{
+    bot::handler::Handler,
     parse::oxbow::CommandParser,
     store::{
         commands::CommandsStore,
@@ -32,11 +33,11 @@ pub use self::{
     handler::{ProcessHandler, ReceiveHandler, RespondHandler},
 };
 
-/// A `Bot` contains all the authentication keys and configuration values necessary to run a Twitch
-/// bot, but has not yet communicated with Twitch.
+/// A `Bot` contains all the authentication keys and configuration values
+/// necessary to run a Twitch bot, but has not yet communicated with Twitch.
 ///
-/// To authenticate with the Twitch API so that the bot can be run, call [`Bot::authenticate()`] to
-/// produce an [`AuthenticatedBot`].
+/// To authenticate with the Twitch API so that the bot can be run, call
+/// [`Bot::authenticate()`] to produce an [`AuthenticatedBot`].
 pub struct Bot {
     client_id: String,
     client_secret: String,
@@ -57,8 +58,8 @@ impl Bot {
         BotTheBuilder::default()
     }
 
-    /// Authenticate using the OAuth authorization code flow, to allow the bot to communicate in
-    /// Twitch IRC channels.
+    /// Authenticate using the OAuth authorization code flow, to allow the bot
+    /// to communicate in Twitch IRC channels.
     #[instrument(skip(self))]
     pub fn authenticate(self) -> Result<AuthenticatedBot, AuthError> {
         let Bot {
@@ -70,12 +71,12 @@ impl Bot {
             conn_pool,
         } = self;
 
-        // Create a token store with a connection to the database, so that we can access and update
-        // stored tokens.
+        // Create a token store with a connection to the database, so that we can access
+        // and update stored tokens.
         let mut token_store = TokenStore::new(conn_pool.clone());
 
-        // If we don't have a token pair (access token + refresh token) stored already, we'll need
-        // to get a new one.
+        // If we don't have a token pair (access token + refresh token) stored already,
+        // we'll need to get a new one.
         if !token_store.has_stored_token()? {
             debug!("stored token not found, performing OAuth flow");
 
@@ -134,8 +135,9 @@ pub enum AuthError {
     AuthFlow(#[from] AuthFlowError),
 }
 
-/// An `AuthenticatedBot` is a bot that has authenticated with the Twitch API and has the necessary
-/// token stored in order to communicate through Twitch chat.
+/// An `AuthenticatedBot` is a bot that has authenticated with the Twitch API
+/// and has the necessary token stored in order to communicate through Twitch
+/// chat.
 ///
 /// Created through [`Bot::authenticate()`].
 pub struct AuthenticatedBot {
@@ -178,15 +180,10 @@ impl AuthenticatedBot {
         let prefix = self.prefix;
         let twitch_name = self.twitch_name.clone();
         let receive_loop = tokio::spawn(async move {
-            let mut handler = ReceiveHandler {
-                msg_rx,
-                task_tx,
-                prefix,
-                twitch_name,
-                parser: CommandParser::new(),
-            };
-
-            handler.receive_loop().await;
+            ReceiveHandler::new(msg_rx, task_tx, (prefix, twitch_name, CommandParser::new()))
+                .await
+                .run()
+                .await;
         });
 
         // Spawn a processing loop to interpret Tasks and turn them into
@@ -196,16 +193,10 @@ impl AuthenticatedBot {
         let quotes = QuotesStore::new(self.conn_pool.clone());
         let prefix = self.prefix;
         let process_loop = tokio::spawn(async move {
-            let mut handler = ProcessHandler {
-                task_rx,
-                res_tx,
-                commands,
-                quotes,
-                prefix,
-                word_searches: HashMap::new(),
-            };
-
-            handler.process_loop().await;
+            ProcessHandler::new(task_rx, res_tx, (commands, quotes, prefix, HashMap::new()))
+                .await
+                .run()
+                .await;
         });
 
         // For every channel, we need a response loop to perform Responses if
@@ -218,13 +209,10 @@ impl AuthenticatedBot {
             let channel = channel.to_owned();
 
             tokio::spawn(async move {
-                let mut handler = RespondHandler {
-                    res_rx,
-                    client,
-                    channel,
-                };
-
-                handler.respond_loop().await;
+                RespondHandler::new(res_rx, client, channel)
+                    .await
+                    .run()
+                    .await;
             });
         }
 

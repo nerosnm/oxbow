@@ -29,6 +29,10 @@ pub trait WithMeta<M> {
     }
 }
 
+pub enum Location {
+    Twitch { channel: String },
+}
+
 /// Tasks to perform, which may or may not result in a [`Response`] being sent.
 #[derive(Debug, Clone)]
 pub enum Task {
