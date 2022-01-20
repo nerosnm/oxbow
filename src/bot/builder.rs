@@ -1,10 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{
+    ops::DerefMut,
+    path::{Path, PathBuf},
+};
 
 use eyre::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
-use tracing::error;
+use tracing::{debug, error};
 
 use crate::bot::Bot;
 
@@ -77,8 +80,8 @@ impl BotBuilder {
 
     /// Create a [`Bot`] from this builder, validating the provided values.
     pub fn build(self) -> Result<Bot, BotBuildError> {
-        let twitch_client_id = self.twitch_client_id.ok_or(BotBuildError::NoClientId)?;
-        let twitch_client_secret = self
+        let client_id = self.twitch_client_id.ok_or(BotBuildError::NoClientId)?;
+        let client_secret = self
             .twitch_client_secret
             .ok_or(BotBuildError::NoClientSecret)?;
         let twitch_name = self.twitch_name.ok_or(BotBuildError::NoTwitchName)?;
@@ -92,9 +95,15 @@ impl BotBuilder {
 
         let conn_pool = Pool::new(manager)?;
 
+        // Now we need to run migrations before we relinquish control of the bot, because we want
+        // to be sure that they get run before anything else touches the database.
+        let mut conn = conn_pool.get()?;
+        let report = crate::db::migrations::runner().run(conn.deref_mut())?;
+        debug!(?report);
+
         Ok(Bot {
-            twitch_client_id,
-            twitch_client_secret,
+            client_id,
+            client_secret,
             twitch_name,
             channels,
             prefix,
@@ -119,6 +128,9 @@ pub enum BotBuildError {
 
     #[error("no prefix provided")]
     NoPrefix,
+
+    #[error("migration error: {0}")]
+    Migration(#[from] refinery::Error),
 
     #[error("rusqlite error: {0}")]
     Rusqlite(#[from] rusqlite::Error),

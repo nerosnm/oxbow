@@ -9,7 +9,7 @@ use tracing::{debug, instrument};
 use twitch_irc::login::{TokenStorage, UserAccessToken};
 
 /// Storage of a [`UserAccessToken`] in an SQLite3 database.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TokenStore {
     conn_pool: Pool<SqliteConnectionManager>,
 }
@@ -151,8 +151,7 @@ impl TokenStorage for TokenStore {
     }
 }
 
-/// Errors that could arise while loading stored tokens from a database using
-/// [`SQLiteTokenStore`].
+/// Errors that could arise while loading stored tokens from a database using [`TokenStore`].
 #[derive(Debug, Error)]
 pub enum LoadError {
     #[error("no stored token found")]
@@ -168,8 +167,7 @@ pub enum LoadError {
     R2d2(#[from] r2d2::Error),
 }
 
-/// Errors that could arise while storing tokens in a database using
-/// [`SQLiteTokenStore`].
+/// Errors that could arise while storing tokens in a database using [`TokenStore`].
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("rusqlite error: {0}")]
@@ -224,7 +222,7 @@ mod tests {
         }
     }
 
-    /// Test that storing an initial token in an [`SQLiteTokenStore`] succeeds
+    /// Test that storing an initial token in a [`TokenStore`] succeeds
     /// and stores a correct value that can be loaded again accurately.
     #[tokio::test]
     async fn initial_store_token() {
@@ -261,8 +259,7 @@ mod tests {
         );
     }
 
-    /// Test that an [`SQLiteTokenStore`] correctly reports whether a token is
-    /// currently stored.
+    /// Test that a [`TokenStore`] correctly reports whether a token is currently stored.
     #[tokio::test]
     async fn check_token_exists() {
         let (_db_dir, mut storage) = storage();
@@ -287,8 +284,8 @@ mod tests {
         );
     }
 
-    /// Test that updating a stored token in an [`SQLiteTokenStore`] succeeds
-    /// and all of the values are correctly changed to their new values.
+    /// Test that updating a stored token in a [`TokenStore`] succeeds and all of the values are
+    /// correctly changed to their new values.
     #[tokio::test]
     async fn update_token() {
         let (_db_dir, mut storage) = storage();

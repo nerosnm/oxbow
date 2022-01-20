@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
         bot_the_builder = bot_the_builder.db_path(db_path);
     }
 
-    bot_the_builder.build()?.run().await?;
+    bot_the_builder.build()?.authenticate()?.run().await?;
 
     Ok(())
 }
