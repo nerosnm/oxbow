@@ -185,6 +185,8 @@ mod tests {
     use tempfile::{tempdir, TempDir};
     use twitch_irc::login::TokenStorage;
 
+    use crate::store::migrations;
+
     use super::*;
 
     fn storage() -> (TempDir, TokenStore) {
@@ -197,7 +199,7 @@ mod tests {
         let mut conn = conn_pool
             .get()
             .expect("getting a connection from the pool should succeed");
-        crate::db::migrations::runner()
+        migrations::runner()
             .run(conn.deref_mut())
             .expect("running migrations should succeed");
 

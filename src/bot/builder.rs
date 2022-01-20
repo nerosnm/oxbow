@@ -9,7 +9,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use thiserror::Error;
 use tracing::{debug, error};
 
-use crate::bot::Bot;
+use crate::{bot::Bot, store::migrations};
 
 /// The number one single when Twitch user @NinthRoads was born was Bob The
 /// Builder.
@@ -98,7 +98,7 @@ impl BotBuilder {
         // Now we need to run migrations before we relinquish control of the bot, because we want
         // to be sure that they get run before anything else touches the database.
         let mut conn = conn_pool.get()?;
-        let report = crate::db::migrations::runner().run(conn.deref_mut())?;
+        let report = migrations::runner().run(conn.deref_mut())?;
         debug!(?report);
 
         Ok(Bot {
