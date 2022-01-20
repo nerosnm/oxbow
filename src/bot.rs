@@ -17,7 +17,7 @@ pub use self::{
 };
 use crate::{
     parse::oxbow::CommandParser,
-    store::{commands::CommandsStore, quotes::QuotesStore, token::SQLiteTokenStore},
+    store::{commands::CommandsStore, quotes::QuotesStore, token::TokenStore},
 };
 
 /// The main `oxbow` bot entry point.
@@ -53,7 +53,7 @@ impl Bot {
         let report = crate::db::migrations::runner().run(conn.deref_mut())?;
         debug!(?report);
 
-        let mut store = SQLiteTokenStore::new(self.conn_pool.clone());
+        let mut store = TokenStore::new(self.conn_pool.clone());
         crate::auth::authenticate(
             &mut store,
             &self.twitch_client_id,

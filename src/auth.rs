@@ -5,13 +5,13 @@ use twitch_api2::twitch_oauth2::{scopes::Scope, TwitchToken};
 use twitch_irc::login::UserAccessToken;
 use twitch_oauth2_auth_flow::AuthFlowError;
 
-use crate::store::token::{LoadError, SQLiteTokenStore, StoreError};
+use crate::store::token::{LoadError, StoreError, TokenStore};
 
 /// Perform the OAuth2 authentication flow with the Twitch API to get a user
 /// token.
 #[instrument(skip(store, client_id, client_secret))]
 pub async fn authenticate(
-    store: &mut SQLiteTokenStore,
+    store: &mut TokenStore,
     client_id: &str,
     client_secret: &str,
 ) -> Result<(), AuthError> {

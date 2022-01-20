@@ -10,11 +10,11 @@ use twitch_irc::login::{TokenStorage, UserAccessToken};
 
 /// Storage of a [`UserAccessToken`] in an SQLite3 database.
 #[derive(Debug)]
-pub struct SQLiteTokenStore {
+pub struct TokenStore {
     conn_pool: Pool<SqliteConnectionManager>,
 }
 
-impl SQLiteTokenStore {
+impl TokenStore {
     /// Create an `SQLiteStorage` with a connection to a database.
     pub fn new(conn_pool: Pool<SqliteConnectionManager>) -> Self {
         Self { conn_pool }
@@ -80,7 +80,7 @@ impl SQLiteTokenStore {
 }
 
 #[async_trait]
-impl TokenStorage for SQLiteTokenStore {
+impl TokenStorage for TokenStore {
     type LoadError = LoadError;
     type UpdateError = StoreError;
 
@@ -189,7 +189,7 @@ mod tests {
 
     use super::*;
 
-    fn storage() -> (TempDir, SQLiteTokenStore) {
+    fn storage() -> (TempDir, TokenStore) {
         let db_dir = tempdir().expect("creating a temporary directory should succeed");
         let db_path = db_dir.path().join("db.sqlite3");
 
@@ -203,7 +203,7 @@ mod tests {
             .run(conn.deref_mut())
             .expect("running migrations should succeed");
 
-        (db_dir, SQLiteTokenStore { conn_pool })
+        (db_dir, TokenStore { conn_pool })
     }
 
     fn token_1() -> UserAccessToken {
