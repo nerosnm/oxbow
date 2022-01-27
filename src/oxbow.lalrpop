@@ -60,7 +60,7 @@ pub Search: Search = {
         word,
         distance,
     },
-    CMD_UPPER <word:AlphaWord> <distance:PosNum?> => Search::Lower {
+    CMD_UPPER <word:AlphaWord> <distance:PosNum?> => Search::Upper {
         word,
         distance,
     },
