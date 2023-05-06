@@ -12,3 +12,4 @@
 *.sqlite3.bak*
 
 /result
+/result-bin
