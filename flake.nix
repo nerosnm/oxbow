@@ -118,6 +118,7 @@
         ] ++ optionals stdenv.isDarwin (with darwin.apple_sdk.frameworks; [
           # Darwin-only dependencies
           Security
+          SystemConfiguration
         ]);
       };
 

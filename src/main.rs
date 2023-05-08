@@ -1,4 +1,4 @@
-use clap::Clap;
+use clap::Parser;
 use eyre::Result;
 use opts::Opts;
 use oxbow::bot::Bot;

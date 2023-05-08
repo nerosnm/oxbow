@@ -1,6 +1,6 @@
-use clap::Clap;
+use clap::Parser;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opts {
     /// Path to the database file, such as `db.sqlite3`, to use. If this is not
     /// provided, an in-memory database will be used instead.
